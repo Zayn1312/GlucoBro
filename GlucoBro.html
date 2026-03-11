@@ -151,6 +151,28 @@ canvas#ringGauge{width:280px;height:280px}
 
 /* Sheet handle grab area */
 .sheet-handle{cursor:grab;padding:8px 0;touch-action:none}
+
+/* Cloud Sync Indicator */
+.sync-indicator{display:flex;align-items:center;gap:6px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:var(--text3);transition:background .3s}
+.sync-dot.synced{background:var(--green)}
+.sync-dot.syncing{background:var(--yellow);animation:syncPulse 1s ease-in-out infinite}
+.sync-dot.error{background:var(--red)}
+.sync-dot.off{background:var(--text3)}
+@keyframes syncPulse{0%,100%{opacity:1}50%{opacity:.3}}
+.sync-icon{width:16px;height:16px;fill:var(--text2)}
+
+/* Cloud Sync Settings */
+.sync-config{margin-top:12px;padding:14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm)}
+.sync-config .form-group{margin-bottom:10px}
+.sync-config .form-group:last-child{margin-bottom:0}
+.sync-config label{display:block;font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px}
+.sync-config input{width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none;transition:border-color .2s}
+.sync-config input:focus{border-color:var(--sig);box-shadow:0 0 0 3px var(--sig-dim)}
+.sync-code-display{font-family:'Orbitron',monospace;font-size:18px;color:var(--sig);text-align:center;padding:12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;letter-spacing:4px;text-shadow:0 0 10px var(--sig-glow);margin-bottom:10px}
+.sync-status-text{font-size:11px;color:var(--text2);text-align:center;margin-top:8px}
+.sync-btn-row{display:flex;gap:8px;margin-top:10px}
+.sync-btn-row .btn{flex:1;padding:10px 12px;font-size:12px}
 </style>
 </head>
 <body>
@@ -161,7 +183,13 @@ canvas#ringGauge{width:280px;height:280px}
   <!-- Top Bar -->
   <div class="top-bar">
     <div class="logo">GLUCOBRO</div>
-    <div class="date-display" id="dateDisplay"></div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="sync-indicator" id="syncIndicator" onclick="manualSync()" title="Cloud Sync">
+        <svg class="sync-icon" viewBox="0 0 24 24"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96z"/></svg>
+        <div class="sync-dot off" id="syncDot"></div>
+      </div>
+      <div class="date-display" id="dateDisplay"></div>
+    </div>
   </div>
 
   <!-- Ring Gauge -->
@@ -327,6 +355,35 @@ canvas#ringGauge{width:280px;height:280px}
     </div>
     <div class="setting-row">
       <div>
+        <div class="setting-label">Cloud Sync</div>
+        <div class="setting-desc">Daten über Supabase synchronisieren</div>
+      </div>
+      <div class="toggle" id="toggleSync" onclick="toggleCloudSync()"></div>
+    </div>
+    <div id="syncConfigContainer" style="display:none">
+      <div class="sync-config">
+        <div class="form-group">
+          <label>Supabase URL</label>
+          <input type="url" id="inputSupaUrl" placeholder="https://xyz.supabase.co" onchange="saveSyncConfig()">
+        </div>
+        <div class="form-group">
+          <label>Anon Key</label>
+          <input type="text" id="inputSupaKey" placeholder="eyJhbGci..." onchange="saveSyncConfig()">
+        </div>
+        <div class="form-group">
+          <label>Sync-Code (Geräte-Kopplung)</label>
+          <div class="sync-code-display" id="syncCodeDisplay">--------</div>
+          <input type="text" id="inputSyncCode" placeholder="Code von anderem Gerät eingeben" maxlength="8" style="text-transform:uppercase;letter-spacing:2px;text-align:center" onchange="saveSyncConfig()">
+        </div>
+        <div class="sync-btn-row">
+          <button class="btn btn-secondary" onclick="generateNewSyncCode()">Neuer Code</button>
+          <button class="btn btn-primary" onclick="manualSync()">Jetzt synchronisieren</button>
+        </div>
+        <div class="sync-status-text" id="syncStatusText">Nicht verbunden</div>
+      </div>
+    </div>
+    <div class="setting-row">
+      <div>
         <div class="setting-label">Alle Daten löschen</div>
         <div class="setting-desc">Unwiderruflich — alle Einträge werden gelöscht</div>
       </div>
@@ -400,6 +457,12 @@ canvas#ringGauge{width:280px;height:280px}
 const STORAGE_KEY = 'glucobro_entries';
 const SETTINGS_KEY = 'glucobro_settings';
 const FACT_KEY = 'glucobro_last_fact';
+const SYNC_URL_KEY = 'glucobro_supa_url';
+const SYNC_KEY_KEY = 'glucobro_supa_key';
+const SYNC_ID_KEY = 'glucobro_sync_id';
+const SYNC_LAST_KEY = 'glucobro_last_sync';
+const SUPA_DEFAULT_URL = 'https://hvcuspxmswhlzkatfxst.supabase.co';
+const SUPA_DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2Y3VzcHhtc3dobHprYXRmeHN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxODUwODMsImV4cCI6MjA4ODc2MTA4M30.MiV1Fdrz3dT-BLTxH_d0SPqiLtMxU-87Af6u_ql95NU';
 
 function getEntries() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
@@ -417,6 +480,184 @@ function getSettings() {
   }
 }
 function saveSettings(s) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
+
+// === CLOUD SYNC (Supabase) ===
+function isSyncEnabled() {
+  const s = getSettings();
+  return s.cloudSync && localStorage.getItem(SYNC_URL_KEY) && localStorage.getItem(SYNC_KEY_KEY) && localStorage.getItem(SYNC_ID_KEY);
+}
+
+function setSyncStatus(status) {
+  const dot = document.getElementById('syncDot');
+  dot.className = 'sync-dot ' + status;
+}
+
+function generateSyncCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+function generateNewSyncCode() {
+  const code = generateSyncCode();
+  localStorage.setItem(SYNC_ID_KEY, code);
+  document.getElementById('syncCodeDisplay').textContent = code;
+  document.getElementById('inputSyncCode').value = '';
+  showToast('Neuer Sync-Code generiert');
+}
+
+function saveSyncConfig() {
+  const url = document.getElementById('inputSupaUrl').value.trim().replace(/\/+$/, '');
+  const key = document.getElementById('inputSupaKey').value.trim();
+  const codeInput = document.getElementById('inputSyncCode').value.trim().toUpperCase();
+
+  if (url) localStorage.setItem(SYNC_URL_KEY, url);
+  if (key) localStorage.setItem(SYNC_KEY_KEY, key);
+  if (codeInput && codeInput.length === 8) {
+    localStorage.setItem(SYNC_ID_KEY, codeInput);
+    document.getElementById('syncCodeDisplay').textContent = codeInput;
+  }
+}
+
+function toggleCloudSync() {
+  const s = getSettings();
+  s.cloudSync = !s.cloudSync;
+  saveSettings(s);
+  if (s.cloudSync) {
+    if (!localStorage.getItem(SYNC_URL_KEY)) localStorage.setItem(SYNC_URL_KEY, SUPA_DEFAULT_URL);
+    if (!localStorage.getItem(SYNC_KEY_KEY)) localStorage.setItem(SYNC_KEY_KEY, SUPA_DEFAULT_KEY);
+    if (!localStorage.getItem(SYNC_ID_KEY)) localStorage.setItem(SYNC_ID_KEY, generateSyncCode());
+  }
+  renderSyncSettings();
+  setSyncStatus(s.cloudSync && isSyncEnabled() ? 'synced' : 'off');
+  if (s.cloudSync && isSyncEnabled()) syncPull();
+}
+
+function renderSyncSettings() {
+  const s = getSettings();
+  document.getElementById('toggleSync').classList.toggle('on', !!s.cloudSync);
+  document.getElementById('syncConfigContainer').style.display = s.cloudSync ? 'block' : 'none';
+
+  if (s.cloudSync) {
+    document.getElementById('inputSupaUrl').value = localStorage.getItem(SYNC_URL_KEY) || '';
+    document.getElementById('inputSupaKey').value = localStorage.getItem(SYNC_KEY_KEY) || '';
+    const syncId = localStorage.getItem(SYNC_ID_KEY) || '';
+    document.getElementById('syncCodeDisplay').textContent = syncId || '--------';
+    document.getElementById('inputSyncCode').value = '';
+    const lastSync = localStorage.getItem(SYNC_LAST_KEY);
+    document.getElementById('syncStatusText').textContent = lastSync
+      ? 'Letzte Sync: ' + new Date(lastSync).toLocaleString('de-DE')
+      : 'Nicht verbunden';
+  }
+}
+
+async function supaFetch(method, path, body) {
+  const url = localStorage.getItem(SYNC_URL_KEY);
+  const key = localStorage.getItem(SYNC_KEY_KEY);
+  if (!url || !key) return null;
+
+  const headers = {
+    'apikey': key,
+    'Authorization': 'Bearer ' + key,
+    'Content-Type': 'application/json',
+    'Prefer': method === 'POST' ? 'resolution=merge-duplicates' : ''
+  };
+  if (method === 'GET') headers['Accept'] = 'application/json';
+
+  try {
+    const res = await fetch(url + '/rest/v1/' + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+    if (method === 'GET') return await res.json();
+    return true;
+  } catch (err) {
+    console.warn('Sync error:', err);
+    return null;
+  }
+}
+
+async function syncPush(entry) {
+  if (!isSyncEnabled()) return;
+  setSyncStatus('syncing');
+  const syncId = localStorage.getItem(SYNC_ID_KEY);
+  const payload = {
+    id: entry.id,
+    sync_id: syncId,
+    bz: entry.bz,
+    date: entry.date,
+    time: entry.time,
+    meal: entry.meal || '',
+    meds: entry.meds || '',
+    sport: entry.sport || '',
+    mood: entry.mood || '',
+    weight: entry.weight || null,
+    updated_at: new Date().toISOString()
+  };
+  const result = await supaFetch('POST', 'entries?on_conflict=id', payload);
+  setSyncStatus(result ? 'synced' : 'error');
+  if (result) localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+}
+
+async function syncDelete(id) {
+  if (!isSyncEnabled()) return;
+  setSyncStatus('syncing');
+  const syncId = localStorage.getItem(SYNC_ID_KEY);
+  const result = await supaFetch('DELETE', `entries?id=eq.${id}&sync_id=eq.${syncId}`);
+  setSyncStatus(result ? 'synced' : 'error');
+  if (result) localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+}
+
+async function syncPull() {
+  if (!isSyncEnabled()) return;
+  setSyncStatus('syncing');
+  const syncId = localStorage.getItem(SYNC_ID_KEY);
+  const remote = await supaFetch('GET', `entries?sync_id=eq.${syncId}&order=id.desc`);
+  if (!remote) { setSyncStatus('error'); return; }
+
+  const local = getEntries();
+  const localMap = new Map(local.map(e => [e.id, e]));
+  const remoteMap = new Map(remote.map(e => [e.id, e]));
+  let changed = false;
+
+  // Remote entries not in local → add
+  for (const r of remote) {
+    if (!localMap.has(r.id)) {
+      local.push({ id: r.id, bz: r.bz, date: r.date, time: r.time, meal: r.meal, meds: r.meds, sport: r.sport, mood: r.mood, weight: r.weight });
+      changed = true;
+    }
+  }
+
+  // Local entries not in remote → push up
+  const pushPromises = [];
+  for (const l of local) {
+    if (!remoteMap.has(l.id)) {
+      pushPromises.push(syncPush(l));
+    }
+  }
+
+  if (changed) {
+    local.sort((a,b) => new Date(b.date+'T'+b.time) - new Date(a.date+'T'+a.time));
+    setEntries(local);
+    updateDashboard();
+  }
+
+  await Promise.all(pushPromises);
+  setSyncStatus('synced');
+  localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+}
+
+async function manualSync() {
+  if (!isSyncEnabled()) {
+    showToast('Sync nicht konfiguriert');
+    return;
+  }
+  showToast('Synchronisiere...');
+  await syncPull();
+  showToast('Sync abgeschlossen');
+  if (document.getElementById('syncStatusText')) {
+    document.getElementById('syncStatusText').textContent = 'Letzte Sync: ' + new Date().toLocaleString('de-DE');
+  }
+}
 
 // === COLOR SYSTEM ===
 function sigColor(bz) {
@@ -674,6 +915,7 @@ function saveEntry() {
   updateDashboard();
   showToast('Gespeichert');
   if (navigator.vibrate) navigator.vibrate(50);
+  syncPush(entry);
 }
 
 // === LOG ===
@@ -717,6 +959,7 @@ function deleteEntry(id) {
   renderLog();
   updateDashboard();
   showToast('Gelöscht');
+  syncDelete(id);
 }
 
 function editEntry(id) {
@@ -768,6 +1011,7 @@ function updateEntry() {
   updateDashboard();
   showToast('Aktualisiert');
   if (navigator.vibrate) navigator.vibrate(50);
+  syncPush(entries[idx]);
 }
 
 // === STATS ===
@@ -888,6 +1132,7 @@ function renderSettings() {
   document.getElementById('toggleNotif').classList.toggle('on', s.notifications);
   document.getElementById('notifTimesContainer').style.display = s.notifications ? 'block' : 'none';
   renderNotifTimes();
+  renderSyncSettings();
 }
 
 async function toggleNotifications() {
@@ -1007,6 +1252,11 @@ function clearAllData() {
   localStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(SETTINGS_KEY);
   localStorage.removeItem(FACT_KEY);
+  localStorage.removeItem(SYNC_URL_KEY);
+  localStorage.removeItem(SYNC_KEY_KEY);
+  localStorage.removeItem(SYNC_ID_KEY);
+  localStorage.removeItem(SYNC_LAST_KEY);
+  setSyncStatus('off');
   updateDashboard();
   closeSheet();
 }
@@ -1188,6 +1438,8 @@ setInterval(() => {
 updateDashboard();
 showDailyFact();
 scheduleNotifications();
+setSyncStatus(isSyncEnabled() ? 'synced' : 'off');
+syncPull();
 </script>
 </body>
 </html>
