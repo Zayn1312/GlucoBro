@@ -173,6 +173,21 @@ canvas#ringGauge{width:280px;height:280px}
 .sync-status-text{font-size:11px;color:var(--text2);text-align:center;margin-top:8px}
 .sync-btn-row{display:flex;gap:8px;margin-top:10px}
 .sync-btn-row .btn{flex:1;padding:10px 12px;font-size:12px}
+
+/* CGM Live Indicator */
+.cgm-badge{display:none;align-items:center;gap:6px;padding:6px 14px;background:var(--sig-dim);border:1px solid rgba(0,255,136,.25);border-radius:20px;margin-top:12px;font-size:12px;color:var(--sig);font-weight:600}
+.cgm-badge.active{display:inline-flex}
+.cgm-badge .cgm-live-dot{width:6px;height:6px;border-radius:50%;background:var(--sig);animation:syncPulse 2s ease-in-out infinite}
+.trend-arrow{font-family:'Orbitron',monospace;font-size:16px;font-weight:900;margin-left:2px}
+.cgm-config{margin-top:12px;padding:14px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm)}
+.cgm-config .form-group{margin-bottom:10px}
+.cgm-config .form-group:last-child{margin-bottom:0}
+.cgm-config label{display:block;font-size:10px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px}
+.cgm-config input{width:100%;padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;outline:none;transition:border-color .2s}
+.cgm-config input:focus{border-color:var(--sig);box-shadow:0 0 0 3px var(--sig-dim)}
+.cgm-status{font-size:11px;color:var(--text2);text-align:center;margin-top:8px;line-height:1.6}
+.cgm-status.connected{color:var(--sig)}
+.cgm-status.error{color:var(--red)}
 </style>
 </head>
 <body>
@@ -200,6 +215,13 @@ canvas#ringGauge{width:280px;height:280px}
       <div class="unit">mg/dl</div>
       <div class="label" id="gaugeLabel">Kein Eintrag</div>
     </div>
+  </div>
+
+  <!-- CGM Badge -->
+  <div class="cgm-badge" id="cgmBadge">
+    <div class="cgm-live-dot"></div>
+    <span>CGM LIVE</span>
+    <span class="trend-arrow" id="cgmTrend"></span>
   </div>
 
   <!-- Motivation -->
@@ -380,6 +402,30 @@ canvas#ringGauge{width:280px;height:280px}
           <button class="btn btn-primary" onclick="manualSync()">Jetzt synchronisieren</button>
         </div>
         <div class="sync-status-text" id="syncStatusText">Nicht verbunden</div>
+      </div>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">FreeStyle Libre CGM</div>
+        <div class="setting-desc">Live-Blutzucker vom Sensor</div>
+      </div>
+      <div class="toggle" id="toggleCGM" onclick="toggleCGM()"></div>
+    </div>
+    <div id="cgmConfigContainer" style="display:none">
+      <div class="cgm-config">
+        <div class="form-group">
+          <label>LibreLinkUp E-Mail</label>
+          <input type="email" id="inputCgmEmail" placeholder="deine@email.de">
+        </div>
+        <div class="form-group">
+          <label>LibreLinkUp Passwort</label>
+          <input type="password" id="inputCgmPassword" placeholder="Passwort">
+        </div>
+        <div class="sync-btn-row">
+          <button class="btn btn-primary" onclick="cgmLogin()">Verbinden</button>
+          <button class="btn btn-secondary" onclick="cgmFetchNow()">Jetzt abrufen</button>
+        </div>
+        <div class="cgm-status" id="cgmStatus">Nicht verbunden</div>
       </div>
     </div>
     <div class="setting-row">
@@ -657,6 +703,181 @@ async function manualSync() {
   if (document.getElementById('syncStatusText')) {
     document.getElementById('syncStatusText').textContent = 'Letzte Sync: ' + new Date().toLocaleString('de-DE');
   }
+}
+
+// === FREESTYLE LIBRE CGM ===
+const CGM_AUTH_KEY = 'glucobro_cgm_auth';
+const CGM_PATIENT_KEY = 'glucobro_cgm_patient';
+const LIBRE_API = '/api/libre';
+const TREND_ARROWS = { 1:'↓↓', 2:'↓', 3:'→', 4:'↑', 5:'↑↑' };
+let cgmInterval = null;
+
+function getCgmAuth() {
+  try { return JSON.parse(localStorage.getItem(CGM_AUTH_KEY)); } catch { return null; }
+}
+
+function toggleCGM() {
+  const s = getSettings();
+  s.cgmEnabled = !s.cgmEnabled;
+  saveSettings(s);
+  renderCgmSettings();
+  if (!s.cgmEnabled) stopCgmPolling();
+}
+
+function renderCgmSettings() {
+  const s = getSettings();
+  document.getElementById('toggleCGM').classList.toggle('on', !!s.cgmEnabled);
+  document.getElementById('cgmConfigContainer').style.display = s.cgmEnabled ? 'block' : 'none';
+  const auth = getCgmAuth();
+  if (auth) {
+    document.getElementById('cgmStatus').textContent = 'Verbunden — Polling alle 5 Min';
+    document.getElementById('cgmStatus').className = 'cgm-status connected';
+  }
+}
+
+async function cgmLogin() {
+  const email = document.getElementById('inputCgmEmail').value.trim();
+  const pw = document.getElementById('inputCgmPassword').value;
+  if (!email || !pw) { showToast('E-Mail und Passwort eingeben'); return; }
+
+  const statusEl = document.getElementById('cgmStatus');
+  statusEl.textContent = 'Verbinde...';
+  statusEl.className = 'cgm-status';
+
+  try {
+    const res = await fetch(LIBRE_API, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'login', email, password: pw })
+    });
+    const data = await res.json();
+    if (data.error) { statusEl.textContent = data.message || 'Login fehlgeschlagen'; statusEl.className = 'cgm-status error'; return; }
+
+    // Get connections to find patientId
+    const connRes = await fetch(LIBRE_API, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'connections', token: data.token, accountId: data.accountId, host: data.host })
+    });
+    const connData = await connRes.json();
+    const patients = connData.data || [];
+    if (!patients.length) { statusEl.textContent = 'Keine Verbindung gefunden. Aktiviere LibreLinkUp Sharing in der Libre App.'; statusEl.className = 'cgm-status error'; return; }
+
+    const patientId = patients[0].patientId;
+    localStorage.setItem(CGM_AUTH_KEY, JSON.stringify({ token: data.token, accountId: data.accountId, host: data.host }));
+    localStorage.setItem(CGM_PATIENT_KEY, patientId);
+
+    statusEl.textContent = 'Verbunden mit ' + (patients[0].firstName || 'Sensor') + ' — Polling aktiv';
+    statusEl.className = 'cgm-status connected';
+    document.getElementById('inputCgmPassword').value = '';
+    showToast('CGM verbunden');
+    startCgmPolling();
+    cgmFetchNow();
+  } catch (err) {
+    statusEl.textContent = 'Verbindungsfehler: ' + err.message;
+    statusEl.className = 'cgm-status error';
+  }
+}
+
+async function cgmFetchNow() {
+  const auth = getCgmAuth();
+  const patientId = localStorage.getItem(CGM_PATIENT_KEY);
+  if (!auth || !patientId) { showToast('CGM nicht verbunden'); return; }
+
+  try {
+    const res = await fetch(LIBRE_API, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'graph', token: auth.token, accountId: auth.accountId, host: auth.host, patientId })
+    });
+    const data = await res.json();
+    if (!data.data) { console.warn('CGM fetch failed:', data); return; }
+
+    const current = data.data.connection?.glucoseMeasurement;
+    const graphData = data.data.graphData || [];
+
+    // Update live gauge with current reading
+    if (current) {
+      const bz = current.ValueInMgPerDl || current.Value;
+      const trend = TREND_ARROWS[current.TrendArrow] || '';
+      document.getElementById('cgmBadge').classList.add('active');
+      document.getElementById('cgmTrend').textContent = trend;
+
+      // Update main gauge to show live CGM value
+      const color = sigColor(bz);
+      setSig(color);
+      currentParticleColor = color;
+      document.getElementById('gaugeNumber').textContent = bz;
+      gaugeAnim.target = bz;
+      document.getElementById('gaugeLabel').textContent = 'CGM Live ' + trend;
+    }
+
+    // Save new graph data points as entries (avoid duplicates)
+    if (graphData.length) {
+      const entries = getEntries();
+      const existingIds = new Set(entries.map(e => e.id));
+      let added = 0;
+
+      for (const point of graphData) {
+        const bz = point.ValueInMgPerDl || point.Value;
+        const ts = parseLluTimestamp(point.Timestamp || point.FactoryTimestamp);
+        if (!ts || !bz) continue;
+
+        // Use timestamp as ID to avoid duplicates (round to minute)
+        const id = Math.floor(ts.getTime() / 60000) * 60000;
+        if (existingIds.has(id)) continue;
+
+        entries.push({
+          id,
+          bz,
+          date: ts.toISOString().split('T')[0],
+          time: ts.toTimeString().slice(0, 5),
+          meal: '', meds: '', sport: '',
+          mood: 'CGM',
+          weight: null
+        });
+        existingIds.add(id);
+        added++;
+      }
+
+      if (added > 0) {
+        entries.sort((a, b) => new Date(b.date + 'T' + b.time) - new Date(a.date + 'T' + a.time));
+        setEntries(entries);
+        updateDashboard();
+        // Sync new entries to Supabase
+        if (isSyncEnabled()) {
+          const newest = entries.slice(0, added);
+          newest.forEach(e => syncPush(e));
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('CGM fetch error:', err);
+  }
+}
+
+function parseLluTimestamp(str) {
+  if (!str) return null;
+  // Format: "M/D/YYYY h:mm:ss AM/PM"
+  const m = str.match(/(\d+)\/(\d+)\/(\d+)\s+(\d+):(\d+):(\d+)\s*(AM|PM)?/i);
+  if (!m) return null;
+  let [, month, day, year, hours, mins, secs, ampm] = m;
+  hours = parseInt(hours);
+  if (ampm) {
+    if (ampm.toUpperCase() === 'PM' && hours < 12) hours += 12;
+    if (ampm.toUpperCase() === 'AM' && hours === 12) hours = 0;
+  }
+  return new Date(parseInt(year), parseInt(month) - 1, parseInt(day), hours, parseInt(mins), parseInt(secs));
+}
+
+function startCgmPolling() {
+  stopCgmPolling();
+  const s = getSettings();
+  if (!s.cgmEnabled || !getCgmAuth()) return;
+  cgmFetchNow();
+  cgmInterval = setInterval(cgmFetchNow, 5 * 60 * 1000); // every 5 min
+}
+
+function stopCgmPolling() {
+  if (cgmInterval) { clearInterval(cgmInterval); cgmInterval = null; }
+  document.getElementById('cgmBadge').classList.remove('active');
 }
 
 // === COLOR SYSTEM ===
@@ -1133,6 +1354,7 @@ function renderSettings() {
   document.getElementById('notifTimesContainer').style.display = s.notifications ? 'block' : 'none';
   renderNotifTimes();
   renderSyncSettings();
+  renderCgmSettings();
 }
 
 async function toggleNotifications() {
@@ -1440,6 +1662,7 @@ showDailyFact();
 scheduleNotifications();
 setSyncStatus(isSyncEnabled() ? 'synced' : 'off');
 syncPull();
+if (getSettings().cgmEnabled && getCgmAuth()) startCgmPolling();
 </script>
 </body>
 </html>

@@ -2,6 +2,12 @@
   "rewrites": [
     { "source": "/", "destination": "/GlucoBro.html" }
   ],
+  "functions": {
+    "api/libre.js": {
+      "memory": 128,
+      "maxDuration": 15
+    }
+  },
   "headers": [
     {
       "source": "/sw.js",

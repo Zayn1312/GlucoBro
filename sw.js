@@ -1,4 +1,4 @@
-const CACHE_NAME = 'glucobro-v2';
+const CACHE_NAME = 'glucobro-v3';
 const APP_SHELL = [
   'GlucoBro.html',
   'manifest.json',
