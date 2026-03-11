@@ -1,3 +1,5 @@
 cloudflared.exe
 generate-icons.js
 start_glucobro.bat
+.vercel
+node_modules/

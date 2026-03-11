@@ -1,4 +1,4 @@
-const CACHE_NAME = 'glucobro-v3';
+const CACHE_NAME = 'glucobro-v4';
 const APP_SHELL = [
   'GlucoBro.html',
   'manifest.json',
@@ -30,10 +30,11 @@ self.addEventListener('activate', e => {
 // Fetch: cache-first for app shell, network-first for rest
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
+  // Skip caching for API calls
+  if (url.pathname.startsWith('/api/')) return;
   const isAppShell = APP_SHELL.some(item => url.href.includes(item) || url.pathname.endsWith(item));
 
   if (isAppShell) {
-    // Cache-first
     e.respondWith(
       caches.match(e.request).then(cached => cached || fetch(e.request).then(resp => {
         const clone = resp.clone();
@@ -42,7 +43,6 @@ self.addEventListener('fetch', e => {
       }))
     );
   } else {
-    // Network-first with cache fallback
     e.respondWith(
       fetch(e.request).then(resp => {
         if (resp.ok) {
@@ -55,15 +55,34 @@ self.addEventListener('fetch', e => {
   }
 });
 
+// Web Push: incoming push notification from server
+self.addEventListener('push', e => {
+  let data = { title: 'GlucoBro', body: 'Neuer Blutzucker-Alert' };
+  try { data = e.data.json(); } catch {}
+
+  e.waitUntil(
+    self.registration.showNotification(data.title || 'GlucoBro', {
+      body: data.body,
+      icon: 'icon-192.png',
+      badge: 'icon-192.png',
+      tag: 'glucobro-cgm-alert',
+      vibrate: [200, 100, 200, 100, 200],
+      data: { url: data.url || '/GlucoBro.html' },
+      requireInteraction: true
+    })
+  );
+});
+
 // Notification click: open/focus app
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  const url = e.notification.data?.url || 'GlucoBro.html';
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
       for (const client of windowClients) {
         if (client.url.includes('GlucoBro') && 'focus' in client) return client.focus();
       }
-      return clients.openWindow('GlucoBro.html#add');
+      return clients.openWindow(url);
     })
   );
 });

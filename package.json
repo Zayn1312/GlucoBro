@@ -1,0 +1,24 @@
+{
+  "name": "glucobro",
+  "version": "1.0.0",
+  "description": "",
+  "main": "generate-icons.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Zayn1312/GlucoBro.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Zayn1312/GlucoBro/issues"
+  },
+  "homepage": "https://github.com/Zayn1312/GlucoBro#readme",
+  "dependencies": {
+    "web-push": "^3.6.7"
+  }
+}

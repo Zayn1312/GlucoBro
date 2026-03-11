@@ -2,12 +2,9 @@
   "rewrites": [
     { "source": "/", "destination": "/GlucoBro.html" }
   ],
-  "functions": {
-    "api/libre.js": {
-      "memory": 128,
-      "maxDuration": 15
-    }
-  },
+  "crons": [
+    { "path": "/api/cron", "schedule": "*/5 * * * *" }
+  ],
   "headers": [
     {
       "source": "/sw.js",
