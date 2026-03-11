@@ -2,9 +2,6 @@
   "rewrites": [
     { "source": "/", "destination": "/GlucoBro.html" }
   ],
-  "crons": [
-    { "path": "/api/cron", "schedule": "*/5 * * * *" }
-  ],
   "headers": [
     {
       "source": "/sw.js",
