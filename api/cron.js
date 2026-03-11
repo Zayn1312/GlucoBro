@@ -64,9 +64,10 @@ async function lluGetCurrent(token, accountId, host) {
 }
 
 module.exports = async function handler(req, res) {
-  // Verify cron secret (Vercel sends this header)
+  // Verify cron secret (Vercel or external cron service sends this)
   const authHeader = req.headers['authorization'];
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
