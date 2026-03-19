@@ -9,12 +9,12 @@ const REGION_URLS = {
 };
 
 const LLU_HEADERS = {
-  'accept-encoding': 'gzip',
   'cache-control': 'no-cache',
   'connection': 'Keep-Alive',
   'content-type': 'application/json',
-  'product': 'llu.android',
+  'product': 'llu.ios',
   'version': '4.16.0',
+  'user-agent': 'Mozilla/5.0 (iPhone; CPU OS 17_4_1 like Mac OS X) AppleWebKit/536.26 (KHTML, like Gecko) Version/17.4.1 Mobile/10A5355d Safari/8536.25',
 };
 
 function httpsRequest(hostname, path, method, headers, body) {
@@ -47,7 +47,7 @@ async function login(email, password, host = 'api-eu.libreview.io') {
   }
 
   if (res.status !== 0 || !res.data || !res.data.authTicket) {
-    return { error: 'login_failed', message: 'Login fehlgeschlagen. Prüfe E-Mail und Passwort.', raw: res };
+    return { error: 'login_failed', message: 'Login fehlgeschlagen (Status: ' + res.status + '). Prüfe E-Mail und Passwort.', debug: { status: res.status, hasData: !!res.data, raw: res.raw || null, statusCode: res.statusCode || null } };
   }
 
   const token = res.data.authTicket.token;
