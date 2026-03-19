@@ -985,12 +985,25 @@ function urlBase64ToUint8Array(base64String) {
 
 async function subscribePush() {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+  // iOS: Push only works in standalone PWA mode (Home Screen)
+  const isStandalone = window.navigator.standalone === true
+    || window.matchMedia('(display-mode: standalone)').matches;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+  if (!isStandalone && isIOS) {
+    console.log('iOS: not standalone — push requires Home Screen install');
+    showToast('Füge GlucoBro zum Homescreen hinzu für Push-Alerts');
+    return;
+  }
+
   try {
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') { showToast('Benachrichtigungen blockiert'); return; }
 
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
+    // Always re-subscribe (iOS can silently drop subscriptions)
     if (!sub) {
       sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
@@ -1009,7 +1022,6 @@ async function subscribePush() {
     showToast('Push-Alerts aktiviert');
   } catch (err) {
     console.warn('Push subscribe error:', err);
-    showToast('Push-Registrierung fehlgeschlagen');
   }
 }
 
@@ -1774,13 +1786,14 @@ handleHash();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').then(reg => {
     console.log('SW registered:', reg.scope);
-    // Re-schedule notifications once SW is active
     if (reg.active) scheduleNotifications();
     reg.addEventListener('updatefound', () => {
       reg.installing.addEventListener('statechange', function() {
         if (this.state === 'activated') scheduleNotifications();
       });
     });
+    // Re-subscribe push on every launch (iOS silently drops subscriptions)
+    if (isLoggedIn()) subscribePush();
   }).catch(err => console.warn('SW registration failed:', err));
 }
 

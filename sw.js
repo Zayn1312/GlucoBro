@@ -30,7 +30,6 @@ self.addEventListener('activate', e => {
 // Fetch: cache-first for app shell, network-first for rest
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  // Skip caching for API calls
   if (url.pathname.startsWith('/api/')) return;
   const isAppShell = APP_SHELL.some(item => url.href.includes(item) || url.pathname.endsWith(item));
 
@@ -58,17 +57,34 @@ self.addEventListener('fetch', e => {
 // Web Push: incoming push notification from server
 self.addEventListener('push', e => {
   let data = { title: 'GlucoBro', body: 'Neuer Blutzucker-Alert' };
-  try { data = e.data.json(); } catch {}
+
+  if (e.data) {
+    try {
+      const json = e.data.json();
+      // Support both standard and Declarative Web Push payload formats
+      if (json.notification) {
+        data = {
+          title: json.notification.title || json.title || 'GlucoBro',
+          body: json.notification.body || json.body || 'Blutzucker prüfen!',
+          url: json.notification.navigate || json.url || '/GlucoBro.html'
+        };
+      } else {
+        data = json;
+      }
+    } catch {
+      try { data = { title: 'GlucoBro', body: e.data.text() }; } catch {}
+    }
+  }
 
   e.waitUntil(
     self.registration.showNotification(data.title || 'GlucoBro', {
-      body: data.body,
+      body: data.body || 'Blutzucker prüfen!',
       icon: 'icon-192.png',
       badge: 'icon-192.png',
-      tag: 'glucobro-cgm-alert',
-      vibrate: [200, 100, 200, 100, 200],
+      tag: data.tag || 'glucobro-alert',
       data: { url: data.url || '/GlucoBro.html' },
       requireInteraction: true
+      // NOTE: vibrate removed — iOS ignores it, some WebKit versions error
     })
   );
 });
@@ -76,7 +92,7 @@ self.addEventListener('push', e => {
 // Notification click: open/focus app
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  const url = e.notification.data?.url || 'GlucoBro.html';
+  const url = e.notification.data?.url || '/GlucoBro.html';
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
       for (const client of windowClients) {
@@ -98,8 +114,7 @@ self.addEventListener('message', e => {
           icon: 'icon-192.png',
           badge: 'icon-192.png',
           tag: tag || 'glucobro-reminder',
-          vibrate: [100, 50, 100],
-          data: { url: 'GlucoBro.html#add' }
+          data: { url: '/GlucoBro.html#add' }
         });
       }, delay);
     }

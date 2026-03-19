@@ -115,7 +115,12 @@ module.exports = async function handler(req, res) {
         ? 'Bewegung, Wasser trinken. Du packst das.'
         : 'Schnell Zucker zuführen! Traubenzucker, Saft.';
 
-      const payload = JSON.stringify({ title, body, bz, trend, url: '/GlucoBro.html' });
+      // Dual-format: standard (SW reads) + Declarative Web Push (iOS 18.4+ fallback)
+      const payload = JSON.stringify({
+        web_push: 8030,
+        notification: { title, body, navigate: '/GlucoBro.html', app_badge: 1 },
+        title, body, bz, trend, url: '/GlucoBro.html'
+      });
 
       for (const sub of subs) {
         try {
