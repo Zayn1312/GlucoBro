@@ -3,6 +3,7 @@
   "short_name": "GlucoBro",
   "description": "Dein persönlicher Blutzucker-Tracker mit Sci-Fi-Vibes",
   "start_url": "./GlucoBro.html",
+  "id": "/GlucoBro.html",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0a0a0f",
