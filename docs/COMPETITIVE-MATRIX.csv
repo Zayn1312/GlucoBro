@@ -1,0 +1,23 @@
+Feature;GlucoBro;mySugr (Roche);Sugarmate (Dexcom);xDrip+;Nightscout;Glucose Buddy;Dario;Glooko;LibreView
+Platform;PWA (any browser);iOS/Android;iOS/Android;Android only;Web + apps;iOS/Android;iOS/Android;iOS/Android/Web;Web + iOS/Android
+Price;Free no sub;Free + Pro $2.99/mo;Free;Free (OSS);Free (OSS) + hosting;Free + Premium $3.33/mo;Free + meter hardware;Free (clinic-funded);Free
+CGM: Libre;Yes (Libre 3 via LLU);Yes (via SmartGuide);No;Yes (NFC + BT);Yes (via uploader);No;No;Yes (via sync);Yes (native)
+CGM: Dexcom;No;No;Yes (native);Yes (native);Yes (via uploader);Yes (Premium);No;Yes (via sync);No
+CGM: Multiple Devices;Libre only;Accu-Chek + Libre;Dexcom only;10+ devices;Most CGMs;Dexcom only;None (meter only);200+ devices;Libre only
+Real-time Gauge;Yes (Canvas);No;Yes;Yes (widget);Yes (web);No;No;No;Yes (web)
+Trend Arrows;Yes;Yes;Yes;Yes;Yes;No;No;No;Yes
+Manual Logging;BG+meal+meds+sport+mood+weight;BG+meal+insulin+activity+notes;BG+meal+exercise+insulin+notes;BG+insulin+carbs+notes;BG+insulin+carbs+notes;BG+meal+meds+exercise+BP;BG+carbs+insulin+meds+BP;BG+insulin+meals+exercise;BG only (auto)
+Time in Range;Basic (<140 only);Yes (standard 70-180);Yes (70-180);Yes (customizable);Yes (standard);No;No;Yes (standard);Yes (standard)
+AGP Report;No;Yes;No;Yes;Yes;No;No;Yes;Yes (native)
+A1c Estimation;No;Yes (Pro);Yes;Yes;Yes;Yes (Premium);No;Yes;Yes
+Pattern Detection;No;Yes (Pro);Yes (30+ tiles);Yes (predictions);Yes (plugins);Yes (Meal IQ / AI);Yes (pattern alerts);Yes (risk strat.);Basic
+IOB Calculator;No;Yes (Bolus Calc Pro);No;Yes;Yes (treatments);No;No;No;No
+PDF Reports;No;Yes (Pro);No;No;Yes;Yes (Premium);Yes;Yes;Yes
+Food Database;No;No;Yes (FatSecret);No;No;Yes (Meal IQ / AI);No;No;No
+Family Sharing;Sync code only;No;Yes (SMS/call alerts);Yes (follower mode);Yes (core feature);No;Yes (4 contacts);Yes (care team);Yes (care team)
+Watch Support;No;No;Yes (Apple Watch);Yes (Wear OS Garmin);Yes (multiple);No;No;No;No
+Widget;No;No;Yes;Yes (home screen);No;No;No;No;No
+Offline;Yes (SW cache);Yes (local DB);Partial;Yes (full);No (cloud);Yes (local DB);Yes (local DB);Partial;No (cloud)
+Open Source;Potential;No;No;Yes (GPL);Yes (AGPL);No;No;No;No
+Data Ownership;Yes (your Supabase);No (Roche);No (Dexcom);Yes (local);Yes (your server);No (their servers);No (their servers);No (their servers);No (Abbott)
+Export;CSV;CSV + PDF;No;CSV + JSON;CSV + JSON + API;CSV + PDF;CSV + PDF;CSV + PDF + API;CSV + PDF

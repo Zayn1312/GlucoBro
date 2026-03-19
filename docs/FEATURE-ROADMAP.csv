@@ -1,0 +1,35 @@
+Priority;ID;Feature;Description;Effort;Impact;Target Week
+P0;P0.1;Standard TIR (70-180);Replace <140 with international standard 70-180 range. TIR/TAR/TBR stacked bar.;S;Critical;1
+P0;P0.2;A1c Estimation;ADAG formula: eA1c = (avg+46.7)/28.7. Min 14 days data.;S;High;1
+P0;P0.3;Glucose Variability;Standard deviation + CV + GMI metrics in stats.;S;High;1
+P0;P0.4;Improved Chart;7d/14d/30d/90d selector. Target band overlay 70-180. High/low markers.;M;High;1
+P0;P0.5;Insulin Logging;Add insulin field (units + type rapid/long). Store and display.;S;High;1
+P0;P0.6;Unit Toggle;mg/dl vs mmol/L toggle in settings. Convert all displays.;S;Medium;1
+P0;P0.7;English Language;i18n layer. DE/EN toggle. Externalize all strings.;M;High;2
+P1;P1.1;AGP Report;14-day glucose profile with percentile bands (5/25/50/75/95). Canvas.;L;Critical;3-4
+P1;P1.2;PDF Report;1-2 page PDF with AGP + TIR + A1c + averages + log. jsPDF.;L;High;3-4
+P1;P1.3;Post-Meal Spike Detection;Analyze BG 1-3h after meals. Flag spike-causing foods.;M;High;4
+P1;P1.4;Dawn Phenomenon Detection;Detect 3-8 AM BG rise pattern. Show trend card.;M;High;5
+P1;P1.5;Carb Logging;Add carb grams field. Show carb-BG correlation.;S;Medium;5
+P1;P1.6;Daily Timeline View;24h axis timeline + weekly heatmap (day x hour).;M;High;6
+P1;P1.7;Predictive Alerts;High/low threshold alerts. Trend-based prediction from CGM arrows.;M;High;7
+P1;P1.8;Family Sharing;Read-only share URL via Supabase RLS. Live gauge for family.;M;High;8
+P2;P2.1;Apple Watch;Shortcut/WidgetKit web clip. Push notification BG on watch.;L;High;9
+P2;P2.2;Home Screen Widget;iOS Scriptable / Android Tasker widget. PWA Widgets API.;L;Medium;9
+P2;P2.3;IOB Calculator;DIA + ISF config. Active insulin calculation. Stack warning.;L;High;10
+P2;P2.4;Carb Ratio Calculator;Calculate I:C ratio from 2+ weeks paired data.;M;Medium;11
+P2;P2.5;Food Database;FatSecret or Open Food Facts API. Barcode scanner.;L;Medium;11
+P2;P2.6;Exercise Impact Tracking;Log exercise type + duration. Correlate with BG drop.;M;Medium;12
+P2;P2.7;Medication Reminders;Recurring schedule config. Push reminders. Adherence %.;M;Medium;12
+P2;P2.8;Dexcom CGM Support;Dexcom Share API integration. G6/G7 support.;L;High;13
+P2;P2.9;Data Import;CSV + mySugr + LibreView + Nightscout import.;M;Medium;13
+P3;P3.1;AI Insights Engine;Local LLM or cloud API for natural language insights.;XL;High;Future
+P3;P3.2;WebBluetooth Direct Sensor;Read Libre via WebBluetooth. True offline CGM.;XL;High;Future
+P3;P3.3;Gamification;Streak badges + in-range records + weekly challenges.;M;Medium;Future
+P3;P3.4;BP + SpO2 Tracking;Blood pressure + heart rate + SpO2 tracking.;M;Low;Future
+P3;P3.5;Multi-Language 6+;TR AR ES FR PL TA + RTL support.;L;Medium;Future
+P3;P3.6;Nightscout Compatibility;Nightscout uploader/consumer interop.;L;Medium;Future
+P3;P3.7;FHIR Export;HL7 FHIR format for clinical interoperability.;L;Low;Future
+P3;P3.8;Offline AI Pattern;TensorFlow.js local BG prediction + anomaly detection.;XL;Medium;Future
+P3;P3.9;Multi-Sensor Comparison;Overlapping sensor session comparison overlay.;M;Low;Future
+P3;P3.10;Community Leaderboard;Opt-in anonymous TIR leaderboard.;L;Medium;Future
