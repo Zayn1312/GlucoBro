@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const https = require('https');
+const zlib = require('zlib');
 
 const REGION_URLS = {
   EU: 'api-eu.libreview.io', DE: 'api-de.libreview.io', FR: 'api-fr.libreview.io',
@@ -9,12 +10,13 @@ const REGION_URLS = {
 };
 
 const LLU_HEADERS = {
+  'accept-encoding': 'gzip',
   'cache-control': 'no-cache',
   'connection': 'Keep-Alive',
   'content-type': 'application/json',
-  'product': 'llu.ios',
-  'version': '4.16.0',
-  'user-agent': 'Mozilla/5.0 (iPhone; CPU OS 17_4_1 like Mac OS X) AppleWebKit/536.26 (KHTML, like Gecko) Version/17.4.1 Mobile/10A5355d Safari/8536.25',
+  'product': 'llu.android',
+  'version': '4.12.0',
+  'user-agent': 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
 };
 
 function httpsRequest(hostname, path, method, headers, body) {
@@ -24,8 +26,23 @@ function httpsRequest(hostname, path, method, headers, body) {
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => {
-        try { resolve(JSON.parse(Buffer.concat(chunks).toString())); }
-        catch { resolve({ raw: Buffer.concat(chunks).toString(), statusCode: res.statusCode }); }
+        const raw = Buffer.concat(chunks);
+        const encoding = res.headers['content-encoding'];
+
+        function parseBody(buf) {
+          const str = buf.toString();
+          try { return JSON.parse(str); }
+          catch { return { raw: str, statusCode: res.statusCode }; }
+        }
+
+        if (encoding === 'gzip') {
+          zlib.gunzip(raw, (err, decoded) => {
+            if (err) resolve(parseBody(raw));
+            else resolve(parseBody(decoded));
+          });
+        } else {
+          resolve(parseBody(raw));
+        }
       });
     });
     req.on('error', reject);
@@ -37,17 +54,32 @@ function httpsRequest(hostname, path, method, headers, body) {
 async function login(email, password, host = 'api-eu.libreview.io') {
   const res = await httpsRequest(host, '/llu/auth/login', 'POST', LLU_HEADERS, { email, password });
 
+  // Region redirect
   if (res.data && res.data.redirect && res.data.region) {
     const newHost = REGION_URLS[res.data.region] || host;
     return login(email, password, newHost);
   }
 
+  // Terms of use
   if (res.status === 4) {
     return { error: 'terms_of_use', message: 'Bitte öffne die LibreLinkUp App und akzeptiere die Nutzungsbedingungen.' };
   }
 
+  // Auth failure
+  if (res.status === 2) {
+    return {
+      error: 'auth_failed',
+      message: 'Falsche Zugangsdaten. Nutze deine LibreLinkUp Login-Daten (nicht FreeStyle Libre App). Öffne zuerst die LibreLinkUp App und logge dich dort ein.',
+      debug: { status: 2, host }
+    };
+  }
+
   if (res.status !== 0 || !res.data || !res.data.authTicket) {
-    return { error: 'login_failed', message: 'Login fehlgeschlagen (Status: ' + res.status + '). Prüfe E-Mail und Passwort.', debug: { status: res.status, hasData: !!res.data, raw: res.raw || null, statusCode: res.statusCode || null } };
+    return {
+      error: 'login_failed',
+      message: 'Login fehlgeschlagen (Status: ' + res.status + ').',
+      debug: { status: res.status, hasData: !!res.data, statusCode: res.statusCode || null, host }
+    };
   }
 
   const token = res.data.authTicket.token;
