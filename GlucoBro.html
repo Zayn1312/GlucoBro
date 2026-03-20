@@ -108,6 +108,15 @@ canvas#ringGauge{width:280px;height:280px}
 .in-range-box{text-align:center;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:16px}
 .in-range-val{font-family:'Orbitron',monospace;font-size:36px;font-weight:900;color:var(--sig)}
 .in-range-lbl{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:2px;margin-top:4px}
+/* HbA1c Card */
+.a1c-card{display:flex;align-items:center;gap:16px;padding:16px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:16px}
+.a1c-val{font-family:'Orbitron',monospace;font-size:42px;font-weight:900;line-height:1}
+.a1c-unit{font-size:13px;color:var(--text2);font-weight:600}
+.a1c-info{flex:1}
+.a1c-label{font-size:13px;font-weight:600;color:var(--text)}
+.a1c-detail{font-size:11px;color:var(--text2);margin-top:4px;line-height:1.5}
+.a1c-bar{height:6px;border-radius:3px;margin-top:8px;background:linear-gradient(90deg,var(--green) 0%,var(--yellow) 50%,var(--red) 100%);position:relative}
+.a1c-marker{position:absolute;top:-3px;width:12px;height:12px;border-radius:50%;border:2px solid var(--bg);transform:translateX(-50%)}
 .avg-row{display:flex;justify-content:space-around;margin-bottom:16px}
 .avg-item{text-align:center}
 .avg-item .av{font-family:'Orbitron',monospace;font-size:22px;font-weight:700}
@@ -261,16 +270,16 @@ canvas#ringGauge{width:280px;height:280px}
   <!-- Stats Row -->
   <div class="stats-row">
     <div class="stat-item">
+      <div class="val" id="statA1c">--</div>
+      <div class="lbl">HbA1c</div>
+    </div>
+    <div class="stat-item">
       <div class="val" id="statAvg">--</div>
       <div class="lbl">7d Avg</div>
     </div>
     <div class="stat-item">
       <div class="val" id="statRange">--</div>
       <div class="lbl">In Range</div>
-    </div>
-    <div class="stat-item">
-      <div class="val" id="statCount">0</div>
-      <div class="lbl">Einträge</div>
     </div>
     <div class="stat-item">
       <div class="val" id="statStreak">0</div>
@@ -368,9 +377,22 @@ canvas#ringGauge{width:280px;height:280px}
   <div class="sheet-handle"></div>
   <div class="sheet-content">
     <div class="sheet-title">Statistiken</div>
+    <!-- HbA1c Estimation -->
+    <div class="a1c-card" id="a1cCard" style="display:none">
+      <div>
+        <div class="a1c-val" id="a1cValue">--</div>
+        <div class="a1c-unit">% geschätzt</div>
+      </div>
+      <div class="a1c-info">
+        <div class="a1c-label" id="a1cLabel">HbA1c (GMI)</div>
+        <div class="a1c-detail" id="a1cDetail">Wird aus deinem Durchschnitt berechnet</div>
+        <div class="a1c-bar"><div class="a1c-marker" id="a1cMarker"></div></div>
+      </div>
+    </div>
+
     <div class="in-range-box">
       <div class="in-range-val" id="statsInRange">--%</div>
-      <div class="in-range-lbl">Im Zielbereich (&lt;140)</div>
+      <div class="in-range-lbl">Im Zielbereich (70–180)</div>
     </div>
     <div class="avg-row">
       <div class="avg-item"><div class="av" id="stats7d" style="color:var(--sig)">--</div><div class="al">7 Tage</div></div>
@@ -1380,12 +1402,65 @@ function updateEntry() {
   syncPush(entries[idx]);
 }
 
+// === HbA1c / GMI ESTIMATION ===
+function calcGMI(avgBZ) {
+  // GMI formula (Bergenstal et al., 2018): 3.31 + (0.02392 × mean glucose mg/dL)
+  return 3.31 + (0.02392 * avgBZ);
+}
+
+function a1cColor(a1c) {
+  if (a1c < 5.7) return '#00FF88';   // Normal
+  if (a1c < 6.5) return '#FFE600';   // Prädiabetes
+  if (a1c < 7.5) return '#FF8800';   // Diabetes — gut kontrolliert
+  return '#FF2222';                   // Diabetes — schlecht kontrolliert
+}
+
+function a1cRating(a1c) {
+  if (a1c < 5.7) return { label: 'Normalbereich', detail: 'Kein Hinweis auf Diabetes' };
+  if (a1c < 6.5) return { label: 'Prädiabetes-Bereich', detail: 'Erhöhtes Risiko — Lebensstil anpassen' };
+  if (a1c < 7.0) return { label: 'Gut kontrolliert', detail: 'ADA-Ziel erreicht (<7.0%)' };
+  if (a1c < 7.5) return { label: 'Verbesserungspotential', detail: 'Leicht über dem ADA-Ziel' };
+  if (a1c < 8.5) return { label: 'Schlecht kontrolliert', detail: 'Therapieanpassung empfohlen' };
+  return { label: 'Kritisch', detail: 'Dringend ärztlichen Rat einholen' };
+}
+
+function renderA1c(entries) {
+  const card = document.getElementById('a1cCard');
+  const all = entries.map(e => e.bz);
+  if (all.length < 10) { card.style.display = 'none'; return; }
+
+  const avgAll = all.reduce((a, b) => a + b, 0) / all.length;
+  const gmi = calcGMI(avgAll);
+  const gmiRound = Math.round(gmi * 10) / 10;
+  const color = a1cColor(gmi);
+  const rating = a1cRating(gmi);
+
+  // Count unique days for confidence
+  const days = new Set(entries.map(e => e.date)).size;
+  const confidence = days >= 90 ? 'Hohe Genauigkeit' : days >= 30 ? 'Gute Schätzung' : days >= 14 ? 'Frühe Schätzung' : 'Wenige Daten';
+
+  card.style.display = 'flex';
+  document.getElementById('a1cValue').textContent = gmiRound.toFixed(1);
+  document.getElementById('a1cValue').style.color = color;
+  document.getElementById('a1cLabel').textContent = rating.label;
+  document.getElementById('a1cDetail').textContent = rating.detail + ' · ' + confidence + ' (' + days + ' Tage, ' + all.length + ' Werte)';
+
+  // Position marker on gradient bar (4.0% = 0%, 10.0% = 100%)
+  const pct = Math.min(Math.max((gmi - 4.0) / 6.0 * 100, 0), 100);
+  const marker = document.getElementById('a1cMarker');
+  marker.style.left = pct + '%';
+  marker.style.background = color;
+
+  return gmiRound;
+}
+
 // === STATS ===
 let bzChart = null;
 
 function renderStats() {
   const entries = getEntries();
   if (!entries.length) {
+    document.getElementById('a1cCard').style.display = 'none';
     document.getElementById('statsInRange').textContent = '--%';
     document.getElementById('stats7d').textContent = '--';
     document.getElementById('stats14d').textContent = '--';
@@ -1393,6 +1468,9 @@ function renderStats() {
     document.getElementById('statsMotivation').textContent = 'Noch keine Daten.';
     return;
   }
+
+  // HbA1c Estimation
+  renderA1c(entries);
 
   const now = new Date();
   const d7 = new Date(now - 7*86400000);
@@ -1403,24 +1481,27 @@ function renderStats() {
   const last14 = entries.filter(e => new Date(e.date) >= d14).map(e => e.bz);
 
   const avg = arr => arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : null;
-  const inRange = all.filter(v => v < 140).length;
+  // Time in Range: international standard 70-180 mg/dL
+  const inRange = all.filter(v => v >= 70 && v <= 180).length;
   const pct = Math.round(inRange / all.length * 100);
 
   document.getElementById('statsInRange').textContent = pct + '%';
-  document.getElementById('statsInRange').style.color = sigColor(avg(all) || 120);
+  document.getElementById('statsInRange').style.color = pct >= 70 ? '#00FF88' : pct >= 50 ? '#FFE600' : '#FF2222';
   document.getElementById('stats7d').textContent = avg(last7) ?? '--';
   document.getElementById('stats7d').style.color = sigColor(avg(last7) || 120);
   document.getElementById('stats14d').textContent = avg(last14) ?? '--';
   document.getElementById('stats14d').style.color = sigColor(avg(last14) || 120);
   document.getElementById('statsAll').textContent = avg(all) ?? '--';
 
-  // Motivation message
+  // Motivation message based on GMI
   const avg7 = avg(last7);
   let msg = '';
   if (avg7 !== null) {
-    if (avg7 < 120) msg = 'Bro, du bist im Flow. Keto + Bewegung — keep it up!';
-    else if (avg7 <= 140) msg = 'Solide. Noch ein bisschen Bewegung und du bist unschlagbar.';
-    else if (avg7 <= 180) msg = 'Kurs halten. Deine Kids zählen auf dich.';
+    const gmi7 = calcGMI(avg7);
+    if (gmi7 < 5.7) msg = 'Bro, du bist im Normalbereich. Absolute Maschine!';
+    else if (gmi7 < 6.5) msg = 'Solide — du hältst den HbA1c im Griff. Weiter so!';
+    else if (gmi7 < 7.0) msg = 'ADA-Ziel erreicht. Kurs halten, du bist auf dem richtigen Weg.';
+    else if (gmi7 < 7.5) msg = 'Knapp über dem Ziel. Mehr Bewegung und Keto können helfen.';
     else msg = 'Zeit to act. Keto. Spaziergang. Schlafen. Du weißt was zu tun ist.';
   }
   document.getElementById('statsMotivation').textContent = msg || 'Mehr Daten nötig.';
@@ -1651,6 +1732,19 @@ function updateDashboard() {
     document.getElementById('gaugeLabel').textContent = 'Kein Eintrag';
   }
 
+  // HbA1c on dashboard
+  const all = entries.map(e => e.bz);
+  if (all.length >= 10) {
+    const avgAll = all.reduce((a, b) => a + b, 0) / all.length;
+    const gmi = calcGMI(avgAll);
+    const gmiStr = (Math.round(gmi * 10) / 10).toFixed(1);
+    document.getElementById('statA1c').textContent = gmiStr + '%';
+    document.getElementById('statA1c').style.color = a1cColor(gmi);
+  } else {
+    document.getElementById('statA1c').textContent = '--';
+    document.getElementById('statA1c').style.color = 'var(--text2)';
+  }
+
   // 7d stats
   const now = new Date();
   const d7 = new Date(now - 7*86400000);
@@ -1660,8 +1754,8 @@ function updateDashboard() {
   document.getElementById('statAvg').textContent = avg7 ?? '--';
   if (avg7) document.getElementById('statAvg').style.color = sigColor(avg7);
 
-  const all = entries.map(e => e.bz);
-  const inRange = all.filter(v => v < 140).length;
+  // In Range: international standard 70-180 mg/dL
+  const inRange = all.filter(v => v >= 70 && v <= 180).length;
   const pct = all.length ? Math.round(inRange / all.length * 100) + '%' : '--';
   document.getElementById('statRange').textContent = pct;
   document.getElementById('statCount').textContent = entries.length;
@@ -1669,13 +1763,15 @@ function updateDashboard() {
   // Streak
   document.getElementById('statStreak').textContent = calcStreak(entries);
 
-  // Motivation
+  // Motivation based on GMI
   let msg = 'Mach deinen ersten Eintrag.';
   if (avg7 !== null) {
-    if (avg7 < 120) msg = '🔥 Im Flow. Keto + Bewegung — keep it up!';
-    else if (avg7 <= 140) msg = '💪 Solide. Noch etwas Bewegung und du bist unschlagbar.';
-    else if (avg7 <= 180) msg = '⚠️ Kurs halten. Deine Kids zählen auf dich.';
-    else msg = '🚨 Zeit to act. Keto. Spaziergang. Schlafen.';
+    const gmi7 = calcGMI(avg7);
+    if (gmi7 < 5.7) msg = 'Normalbereich — absolute Maschine!';
+    else if (gmi7 < 6.5) msg = 'Solide. HbA1c im Griff — weiter so!';
+    else if (gmi7 < 7.0) msg = 'ADA-Ziel erreicht. Kurs halten!';
+    else if (gmi7 < 7.5) msg = 'Knapp über Ziel. Mehr Bewegung hilft.';
+    else msg = 'Zeit to act. Keto. Spaziergang. Schlafen.';
   }
   document.getElementById('motivationCard').textContent = msg;
 }
