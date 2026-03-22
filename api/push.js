@@ -1,7 +1,8 @@
 const https = require('https');
 
-const SUPA_URL = 'hvcuspxmswhlzkatfxst.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2Y3VzcHhtc3dobHprYXRmeHN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxODUwODMsImV4cCI6MjA4ODc2MTA4M30.MiV1Fdrz3dT-BLTxH_d0SPqiLtMxU-87Af6u_ql95NU';
+const SUPA_URL = process.env.SUPABASE_HOST || 'hvcuspxmswhlzkatfxst.supabase.co';
+const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+if (!SUPA_KEY) throw new Error('SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY env var required');
 const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || 'BMnd8AVzWEo7wily_Bqf5QNsFJ3O4SYuznPzrKeob786eyBfZTdddJuqM7XKNeB_9uFebqUxaogsXwO7dPkop3o';
 
 function supaRequest(method, path, body) {
@@ -28,10 +29,15 @@ function supaRequest(method, path, body) {
   });
 }
 
-module.exports = async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+function setCors(req, res) {
+  const allowed = process.env.ALLOWED_ORIGIN || '*';
+  res.setHeader('Access-Control-Allow-Origin', allowed);
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
+module.exports = async function handler(req, res) {
+  setCors(req, res);
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 

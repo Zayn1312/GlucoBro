@@ -12,6 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="GlucoBro">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -160,6 +161,17 @@ canvas#ringGauge{width:280px;height:280px}
 .login-user{display:flex;align-items:center;gap:8px;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .login-user-email{font-size:11px;color:var(--text2);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+/* OTP Input */
+.otp-container{display:flex;gap:8px;justify-content:center;margin-bottom:16px}
+.otp-container input{width:44px;height:56px;text-align:center;font-family:'Orbitron',monospace;font-size:24px;font-weight:900;color:var(--sig);background:var(--surface);border:2px solid var(--border);border-radius:var(--radius-sm);outline:none;transition:border-color .2s,box-shadow .2s;caret-color:var(--sig)}
+.otp-container input:focus{border-color:var(--sig);box-shadow:0 0 0 3px var(--sig-dim)}
+.login-step{display:none}.login-step.active{display:block}
+.login-back{font-size:12px;color:var(--text2);cursor:pointer;text-align:center;margin-top:16px;transition:color .2s}
+.login-back:hover{color:var(--sig)}
+.login-resend{font-size:12px;color:var(--text3);text-align:center;margin-top:12px}
+.login-resend span{color:var(--sig);cursor:pointer}
+.login-error{font-size:12px;color:var(--red);text-align:center;margin-top:8px;min-height:18px}
+
 /* Scrollbar */
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -222,12 +234,34 @@ canvas#ringGauge{width:280px;height:280px}
 <!-- Login Screen -->
 <div class="login-screen" id="loginScreen">
   <div class="login-logo">GLUCOBRO</div>
-  <div class="login-sub">Dein Blutzucker. Dein Tracker.<br>Gib deine E-Mail ein und leg los.</div>
+  <div class="login-sub">Dein Blutzucker. Dein Tracker.<br>Kein Passwort — nur deine E-Mail.</div>
   <div class="login-form">
-    <input type="email" id="loginEmail" placeholder="deine@email.de" autocomplete="email" inputmode="email">
-    <button class="login-btn" id="loginBtn" onclick="handleLogin()">Los geht's</button>
+    <!-- Step 1: Email -->
+    <div class="login-step active" id="loginStepEmail">
+      <input type="email" id="loginEmail" placeholder="deine@email.de" autocomplete="email" inputmode="email">
+      <button class="login-btn" id="loginBtn" onclick="sendOTP()">Code senden</button>
+      <div class="login-error" id="loginError"></div>
+    </div>
+    <!-- Step 2: OTP Code -->
+    <div class="login-step" id="loginStepOTP">
+      <div style="font-size:13px;color:var(--text2);text-align:center;margin-bottom:20px">
+        Code an <strong id="otpEmailDisplay" style="color:var(--sig)"></strong> gesendet
+      </div>
+      <div class="otp-container" id="otpInputs">
+        <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]" autocomplete="one-time-code">
+        <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+        <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+        <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+        <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+        <input type="text" maxlength="1" inputmode="numeric" pattern="[0-9]">
+      </div>
+      <button class="login-btn" id="verifyBtn" onclick="verifyOTP()">Bestätigen</button>
+      <div class="login-error" id="otpError"></div>
+      <div class="login-resend">Keinen Code erhalten? <span onclick="resendOTP()">Erneut senden</span></div>
+      <div class="login-back" onclick="showLoginStep('email')">← Andere E-Mail</div>
+    </div>
   </div>
-  <div class="login-hint">Deine Daten werden automatisch in der Cloud gesichert.<br>Kein Passwort nötig — nur für dich.</div>
+  <div class="login-hint">Deine Daten werden verschlüsselt in der Cloud gesichert.<br>Kein Passwort nötig — sicher per E-Mail-Code.</div>
 </div>
 
 <div class="app">
@@ -343,6 +377,21 @@ canvas#ringGauge{width:280px;height:280px}
       <label>Mahlzeit</label>
       <input type="text" id="inputMeal" placeholder="Was hast du gegessen?">
     </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Insulin (Einheiten)</label>
+        <input type="number" id="inputInsulin" placeholder="z.B. 10" step="0.5" inputmode="decimal">
+      </div>
+      <div class="form-group">
+        <label>Insulin-Typ</label>
+        <select id="inputInsulinType" style="width:100%;padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Inter',sans-serif;font-size:14px">
+          <option value="">— Kein —</option>
+          <option value="rapid">Rapid (Bolus)</option>
+          <option value="long">Langzeit (Basal)</option>
+          <option value="mixed">Misch</option>
+        </select>
+      </div>
+    </div>
     <div class="form-group">
       <label>Medikamente / Supplements</label>
       <input type="text" id="inputMeds" placeholder="z.B. Opipramol, Vitamin D">
@@ -400,6 +449,12 @@ canvas#ringGauge{width:280px;height:280px}
       <div class="avg-item"><div class="av" id="statsAll" style="color:var(--text)">--</div><div class="al">Gesamt</div></div>
     </div>
     <div class="motivation-card" id="statsMotivation" style="margin-top:0;margin-bottom:16px"></div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;justify-content:center" id="chartRangeSelector">
+      <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:11px" onclick="setChartRange(7)" data-range="7">7T</button>
+      <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:11px" onclick="setChartRange(14)" data-range="14">14T</button>
+      <button class="btn btn-primary" style="width:auto;padding:6px 14px;font-size:11px" onclick="setChartRange(30)" data-range="30">30T</button>
+      <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:11px" onclick="setChartRange(90)" data-range="90">90T</button>
+    </div>
     <div class="chart-container">
       <canvas id="bzChart"></canvas>
     </div>
@@ -411,6 +466,13 @@ canvas#ringGauge{width:280px;height:280px}
   <div class="sheet-handle"></div>
   <div class="sheet-content">
     <div class="sheet-title">Einstellungen</div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Einheit</div>
+        <div class="setting-desc" id="unitDesc">mg/dL (Standard)</div>
+      </div>
+      <div class="toggle" id="toggleUnit" onclick="toggleUnit()"></div>
+    </div>
     <div class="setting-row">
       <div>
         <div class="setting-label">Push Notifications</div>
@@ -513,6 +575,21 @@ canvas#ringGauge{width:280px;height:280px}
         <label>Mahlzeit</label>
         <input type="text" id="editMeal">
       </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Insulin (Einheiten)</label>
+          <input type="number" id="editInsulin" step="0.5" inputmode="decimal">
+        </div>
+        <div class="form-group">
+          <label>Insulin-Typ</label>
+          <select id="editInsulinType" style="width:100%;padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Inter',sans-serif;font-size:14px">
+            <option value="">— Kein —</option>
+            <option value="rapid">Rapid (Bolus)</option>
+            <option value="long">Langzeit (Basal)</option>
+            <option value="mixed">Misch</option>
+          </select>
+        </div>
+      </div>
       <div class="form-group">
         <label>Medikamente / Supplements</label>
         <input type="text" id="editMeds">
@@ -549,64 +626,191 @@ canvas#ringGauge{width:280px;height:280px}
 <div class="toast" id="toast"></div>
 
 <script>
+// === SECURITY: HTML ESCAPER ===
+function escapeHTML(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 // === DATA ===
 const STORAGE_KEY = 'glucobro_entries';
 const SETTINGS_KEY = 'glucobro_settings';
 const FACT_KEY = 'glucobro_last_fact';
+const SYNC_LAST_KEY = 'glucobro_last_sync';
+// Legacy keys (for migration)
 const SYNC_URL_KEY = 'glucobro_supa_url';
 const SYNC_KEY_KEY = 'glucobro_supa_key';
 const SYNC_ID_KEY = 'glucobro_sync_id';
-const SYNC_LAST_KEY = 'glucobro_last_sync';
 const USER_EMAIL_KEY = 'glucobro_user_email';
-const SUPA_DEFAULT_URL = 'https://hvcuspxmswhlzkatfxst.supabase.co';
-const SUPA_DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2Y3VzcHhtc3dobHprYXRmeHN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxODUwODMsImV4cCI6MjA4ODc2MTA4M30.MiV1Fdrz3dT-BLTxH_d0SPqiLtMxU-87Af6u_ql95NU';
 
-// === LOGIN / AUTH ===
-function getUserEmail() { return localStorage.getItem(USER_EMAIL_KEY); }
-function isLoggedIn() { return !!getUserEmail(); }
+// === SUPABASE AUTH CLIENT ===
+const SUPA_URL = 'https://hvcuspxmswhlzkatfxst.supabase.co';
+const SUPA_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2Y3VzcHhtc3dobHprYXRmeHN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxODUwODMsImV4cCI6MjA4ODc2MTA4M30.MiV1Fdrz3dT-BLTxH_d0SPqiLtMxU-87Af6u_ql95NU';
 
-async function sha256(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+const supa = window.supabase.createClient(SUPA_URL, SUPA_ANON_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false,
+    storage: window.localStorage
+  }
+});
+
+let currentUser = null;
+let pendingOtpEmail = null;
+
+// === AUTH FUNCTIONS ===
+function isLoggedIn() { return !!currentUser; }
+function getUserEmail() { return currentUser?.email || null; }
+
+async function initAuth() {
+  const { data: { session } } = await supa.auth.getSession();
+  if (session) {
+    currentUser = session.user;
+    onAuthSuccess();
+  } else {
+    document.getElementById('loginScreen').classList.remove('hidden');
+    setTimeout(() => document.getElementById('loginEmail')?.focus(), 500);
+  }
+
+  supa.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      currentUser = session?.user || null;
+      if (event === 'SIGNED_IN') onAuthSuccess();
+    }
+    if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      location.reload();
+    }
+  });
 }
 
-async function handleLogin() {
+function showLoginStep(step) {
+  document.querySelectorAll('.login-step').forEach(el => el.classList.remove('active'));
+  if (step === 'email') {
+    document.getElementById('loginStepEmail').classList.add('active');
+    setTimeout(() => document.getElementById('loginEmail')?.focus(), 100);
+  } else {
+    document.getElementById('loginStepOTP').classList.add('active');
+    const inputs = document.querySelectorAll('#otpInputs input');
+    inputs.forEach(i => i.value = '');
+    setTimeout(() => inputs[0]?.focus(), 100);
+  }
+  document.getElementById('loginError').textContent = '';
+  document.getElementById('otpError').textContent = '';
+}
+
+async function sendOTP() {
   const email = document.getElementById('loginEmail').value.trim().toLowerCase();
   if (!email || !email.includes('@')) {
+    document.getElementById('loginError').textContent = 'Bitte gültige E-Mail eingeben';
     document.getElementById('loginEmail').style.borderColor = 'var(--red)';
     return;
   }
 
   const btn = document.getElementById('loginBtn');
   btn.disabled = true;
-  btn.textContent = 'Wird eingerichtet...';
+  btn.textContent = 'Sende Code...';
 
-  // Generate sync ID from email hash
-  const syncId = (await sha256(email)).slice(0, 16).toUpperCase();
+  try {
+    const { error } = await supa.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true }
+    });
+    if (error) throw error;
 
-  // Store credentials
-  localStorage.setItem(USER_EMAIL_KEY, email);
-  localStorage.setItem(SYNC_URL_KEY, SUPA_DEFAULT_URL);
-  localStorage.setItem(SYNC_KEY_KEY, SUPA_DEFAULT_KEY);
-  localStorage.setItem(SYNC_ID_KEY, syncId);
+    pendingOtpEmail = email;
+    document.getElementById('otpEmailDisplay').textContent = email;
+    showLoginStep('otp');
+    initOtpInputs();
+  } catch (err) {
+    document.getElementById('loginError').textContent = err.message || 'Fehler beim Senden';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Code senden';
+  }
+}
 
-  // Enable cloud sync in settings
-  const s = getSettings();
-  s.cloudSync = true;
-  saveSettings(s);
+async function verifyOTP() {
+  const inputs = document.querySelectorAll('#otpInputs input');
+  const token = Array.from(inputs).map(i => i.value).join('');
+  if (token.length !== 6) {
+    document.getElementById('otpError').textContent = 'Bitte 6-stelligen Code eingeben';
+    return;
+  }
 
-  // Hide login, show app
+  const btn = document.getElementById('verifyBtn');
+  btn.disabled = true;
+  btn.textContent = 'Prüfe...';
+
+  try {
+    const { data, error } = await supa.auth.verifyOtp({
+      email: pendingOtpEmail,
+      token,
+      type: 'email'
+    });
+    if (error) throw error;
+    currentUser = data.user;
+    // Auth success handled by onAuthStateChange
+  } catch (err) {
+    document.getElementById('otpError').textContent = err.message || 'Code ungültig';
+    btn.disabled = false;
+    btn.textContent = 'Bestätigen';
+  }
+}
+
+async function resendOTP() {
+  if (!pendingOtpEmail) return;
+  try {
+    await supa.auth.signInWithOtp({
+      email: pendingOtpEmail,
+      options: { shouldCreateUser: true }
+    });
+    showToast('Neuer Code gesendet');
+  } catch { showToast('Fehler — bitte erneut versuchen'); }
+}
+
+function initOtpInputs() {
+  const inputs = document.querySelectorAll('#otpInputs input');
+  inputs.forEach((input, idx) => {
+    input.addEventListener('input', e => {
+      const val = e.target.value.replace(/[^0-9]/g, '');
+      e.target.value = val.slice(0, 1);
+      if (val && idx < inputs.length - 1) inputs[idx + 1].focus();
+      if (idx === inputs.length - 1 && val) verifyOTP();
+    });
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Backspace' && !e.target.value && idx > 0) {
+        inputs[idx - 1].focus();
+        inputs[idx - 1].value = '';
+      }
+    });
+    input.addEventListener('paste', e => {
+      e.preventDefault();
+      const paste = (e.clipboardData.getData('text') || '').replace(/[^0-9]/g, '').slice(0, 6);
+      paste.split('').forEach((ch, i) => { if (inputs[i]) inputs[i].value = ch; });
+      if (paste.length === 6) verifyOTP();
+      else if (paste.length > 0) inputs[Math.min(paste.length, inputs.length - 1)].focus();
+    });
+  });
+}
+
+async function onAuthSuccess() {
   document.getElementById('loginScreen').classList.add('hidden');
   updateUserDisplay();
   setSyncStatus('syncing');
 
-  // Pull existing data from cloud
+  // Migrate legacy sync_id data if present
+  await migrateFromSyncId();
+
+  // Pull data from cloud
   await syncPull();
   updateDashboard();
-  showToast('Willkommen bei GlucoBro');
-
-  // Request push permission (important for iOS PWA)
+  showDailyFact();
+  scheduleNotifications();
   requestPushPermission();
+
+  if (getSettings().cgmEnabled && getCgmAuth()) startCgmPolling();
 }
 
 function updateUserDisplay() {
@@ -619,32 +823,69 @@ function updateUserDisplay() {
   }
 }
 
-function checkLoginState() {
-  if (isLoggedIn()) {
-    document.getElementById('loginScreen').classList.add('hidden');
-    updateUserDisplay();
-  } else {
-    document.getElementById('loginScreen').classList.remove('hidden');
-  }
-}
-
 async function requestPushPermission() {
   if (!('Notification' in window)) return;
   if (Notification.permission === 'granted') {
     subscribePush();
     return;
   }
-  // Delay slightly so the app feels loaded first
   setTimeout(async () => {
     const perm = await Notification.requestPermission();
     if (perm === 'granted') subscribePush();
   }, 2000);
 }
 
-function logout() {
+async function logout() {
   if (!confirm('Abmelden? Lokale Daten bleiben erhalten.')) return;
+  await supa.auth.signOut();
+  // onAuthStateChange handles reload
+}
+
+// === LEGACY MIGRATION: sync_id → auth.uid() ===
+async function migrateFromSyncId() {
+  const syncId = localStorage.getItem(SYNC_ID_KEY);
+  if (!syncId || !currentUser || localStorage.getItem('glucobro_migrated')) return;
+
+  try {
+    // Fetch old entries via legacy REST API
+    const res = await fetch(SUPA_URL + '/rest/v1/entries?sync_id=eq.' + syncId + '&order=id.desc', {
+      headers: { 'apikey': SUPA_ANON_KEY, 'Authorization': 'Bearer ' + SUPA_ANON_KEY, 'Accept': 'application/json' }
+    });
+    const oldEntries = await res.json();
+    if (!Array.isArray(oldEntries) || !oldEntries.length) {
+      cleanupLegacyKeys();
+      return;
+    }
+
+    // Also merge local entries not in cloud
+    const local = getEntries();
+    const allIds = new Set(oldEntries.map(e => e.id));
+    const merged = [...oldEntries];
+    for (const l of local) {
+      if (!allIds.has(l.id)) { merged.push(l); allIds.add(l.id); }
+    }
+
+    // Save merged entries locally
+    const localEntries = merged.map(e => ({
+      id: e.id, bz: e.bz || e.value, date: e.date, time: e.time,
+      meal: e.meal || '', meds: e.meds || '', sport: e.sport || '',
+      mood: e.mood || '', weight: e.weight || null
+    }));
+    localEntries.sort((a, b) => new Date(b.date + 'T' + b.time) - new Date(a.date + 'T' + a.time));
+    setEntries(localEntries);
+    cleanupLegacyKeys();
+    console.log('Migrated ' + localEntries.length + ' entries from sync_id');
+  } catch (err) {
+    console.warn('Migration error:', err);
+  }
+}
+
+function cleanupLegacyKeys() {
+  localStorage.removeItem(SYNC_ID_KEY);
+  localStorage.removeItem(SYNC_URL_KEY);
+  localStorage.removeItem(SYNC_KEY_KEY);
   localStorage.removeItem(USER_EMAIL_KEY);
-  location.reload();
+  localStorage.setItem('glucobro_migrated', 'true');
 }
 
 function getEntries() {
@@ -656,18 +897,37 @@ function getSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {
       notifications: false,
-      notifTimes: ['07:00','09:00','14:00','20:00']
+      notifTimes: ['07:00','09:00','14:00','20:00'],
+      unit: 'mg/dL'
     };
   } catch {
-    return { notifications: false, notifTimes: ['07:00','09:00','14:00','20:00'] };
+    return { notifications: false, notifTimes: ['07:00','09:00','14:00','20:00'], unit: 'mg/dL' };
   }
 }
 function saveSettings(s) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
 
-// === CLOUD SYNC (Supabase) ===
-function isSyncEnabled() {
-  return isLoggedIn() && localStorage.getItem(SYNC_URL_KEY) && localStorage.getItem(SYNC_KEY_KEY) && localStorage.getItem(SYNC_ID_KEY);
+// === UNIT CONVERSION ===
+function isMmol() { return getSettings().unit === 'mmol/L'; }
+function mgToMmol(mg) { return +(mg / 18.0182).toFixed(1); }
+function mmolToMg(mmol) { return Math.round(mmol * 18.0182); }
+function displayBZ(mg) { return isMmol() ? mgToMmol(mg) : mg; }
+function displayUnit() { return isMmol() ? 'mmol/L' : 'mg/dL'; }
+function parseBZInput(val) {
+  const num = parseFloat(val);
+  if (isNaN(num)) return NaN;
+  return isMmol() ? mmolToMg(num) : Math.round(num);
 }
+
+function toggleUnit() {
+  const s = getSettings();
+  s.unit = s.unit === 'mmol/L' ? 'mg/dL' : 'mmol/L';
+  saveSettings(s);
+  renderSettings();
+  updateDashboard();
+}
+
+// === CLOUD SYNC (Supabase Auth) ===
+function isSyncEnabled() { return isLoggedIn(); }
 
 function setSyncStatus(status) {
   const dot = document.getElementById('syncDot');
@@ -679,7 +939,7 @@ function renderSyncSettings() {
   const statusText = document.getElementById('syncStatusText');
   const descEl = document.getElementById('syncAccountDesc');
   const dotEl = document.getElementById('syncDotSettings');
-  if (isSyncEnabled()) {
+  if (isLoggedIn()) {
     descEl.textContent = 'Automatisch aktiv';
     dotEl.className = 'sync-dot synced';
     statusText.textContent = lastSync
@@ -693,102 +953,79 @@ function renderSyncSettings() {
   updateUserDisplay();
 }
 
-async function supaFetch(method, path, body) {
-  const url = localStorage.getItem(SYNC_URL_KEY);
-  const key = localStorage.getItem(SYNC_KEY_KEY);
-  if (!url || !key) return null;
-
-  const headers = {
-    'apikey': key,
-    'Authorization': 'Bearer ' + key,
-    'Content-Type': 'application/json',
-    'Prefer': method === 'POST' ? 'resolution=merge-duplicates' : ''
-  };
-  if (method === 'GET') headers['Accept'] = 'application/json';
-
-  try {
-    const res = await fetch(url + '/rest/v1/' + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
-    if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
-    if (method === 'GET') return await res.json();
-    return true;
-  } catch (err) {
-    console.warn('Sync error:', err);
-    return null;
-  }
-}
-
 async function syncPush(entry) {
-  if (!isSyncEnabled()) return;
+  if (!isLoggedIn()) return;
   setSyncStatus('syncing');
-  const syncId = localStorage.getItem(SYNC_ID_KEY);
-  const payload = {
-    id: entry.id,
-    sync_id: syncId,
-    bz: entry.bz,
-    date: entry.date,
-    time: entry.time,
-    meal: entry.meal || '',
-    meds: entry.meds || '',
-    sport: entry.sport || '',
-    mood: entry.mood || '',
-    weight: entry.weight || null,
-    updated_at: new Date().toISOString()
-  };
-  const result = await supaFetch('POST', 'entries?on_conflict=id', payload);
-  setSyncStatus(result ? 'synced' : 'error');
-  if (result) localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+  try {
+    const { error } = await supa.from('entries').upsert({
+      id: entry.id,
+      sync_id: currentUser.id,
+      bz: entry.bz,
+      date: entry.date,
+      time: entry.time,
+      meal: entry.meal || '',
+      insulin: entry.insulin || null,
+      insulin_type: entry.insulinType || null,
+      meds: entry.meds || '',
+      sport: entry.sport || '',
+      mood: entry.mood || '',
+      weight: entry.weight || null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'id' });
+    setSyncStatus(error ? 'error' : 'synced');
+    if (!error) localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+  } catch { setSyncStatus('error'); }
 }
 
 async function syncDelete(id) {
-  if (!isSyncEnabled()) return;
+  if (!isLoggedIn()) return;
   setSyncStatus('syncing');
-  const syncId = localStorage.getItem(SYNC_ID_KEY);
-  const result = await supaFetch('DELETE', `entries?id=eq.${id}&sync_id=eq.${syncId}`);
-  setSyncStatus(result ? 'synced' : 'error');
-  if (result) localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+  try {
+    const { error } = await supa.from('entries').delete().eq('id', id).eq('sync_id', currentUser.id);
+    setSyncStatus(error ? 'error' : 'synced');
+    if (!error) localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+  } catch { setSyncStatus('error'); }
 }
 
 async function syncPull() {
-  if (!isSyncEnabled()) return;
+  if (!isLoggedIn()) return;
   setSyncStatus('syncing');
-  const syncId = localStorage.getItem(SYNC_ID_KEY);
-  const remote = await supaFetch('GET', `entries?sync_id=eq.${syncId}&order=id.desc`);
-  if (!remote) { setSyncStatus('error'); return; }
+  try {
+    const { data: remote, error } = await supa.from('entries')
+      .select('*').eq('sync_id', currentUser.id).order('id', { ascending: false });
+    if (error || !remote) { setSyncStatus('error'); return; }
 
-  const local = getEntries();
-  const localMap = new Map(local.map(e => [e.id, e]));
-  const remoteMap = new Map(remote.map(e => [e.id, e]));
-  let changed = false;
+    const local = getEntries();
+    const localMap = new Map(local.map(e => [e.id, e]));
+    const remoteMap = new Map(remote.map(e => [e.id, e]));
+    let changed = false;
 
-  // Remote entries not in local → add
-  for (const r of remote) {
-    if (!localMap.has(r.id)) {
-      local.push({ id: r.id, bz: r.bz, date: r.date, time: r.time, meal: r.meal, meds: r.meds, sport: r.sport, mood: r.mood, weight: r.weight });
-      changed = true;
+    for (const r of remote) {
+      if (!localMap.has(r.id)) {
+        local.push({ id: r.id, bz: r.bz, date: r.date, time: r.time, meal: r.meal, insulin: r.insulin, insulinType: r.insulin_type, meds: r.meds, sport: r.sport, mood: r.mood, weight: r.weight });
+        changed = true;
+      }
     }
-  }
 
-  // Local entries not in remote → push up
-  const pushPromises = [];
-  for (const l of local) {
-    if (!remoteMap.has(l.id)) {
-      pushPromises.push(syncPush(l));
+    const pushPromises = [];
+    for (const l of local) {
+      if (!remoteMap.has(l.id)) pushPromises.push(syncPush(l));
     }
-  }
 
-  if (changed) {
-    local.sort((a,b) => new Date(b.date+'T'+b.time) - new Date(a.date+'T'+a.time));
-    setEntries(local);
-    updateDashboard();
-  }
+    if (changed) {
+      local.sort((a, b) => new Date(b.date + 'T' + b.time) - new Date(a.date + 'T' + a.time));
+      setEntries(local);
+      updateDashboard();
+    }
 
-  await Promise.all(pushPromises);
-  setSyncStatus('synced');
-  localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+    await Promise.all(pushPromises);
+    setSyncStatus('synced');
+    localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+  } catch { setSyncStatus('error'); }
 }
 
 async function manualSync() {
-  if (!isSyncEnabled()) {
+  if (!isLoggedIn()) {
     showToast('Bitte erst einloggen');
     return;
   }
@@ -977,18 +1214,14 @@ function stopCgmPolling() {
   document.getElementById('cgmBadge').classList.remove('active');
 }
 
-// Save CGM credentials to Supabase (for cron-based push alerts)
+// Save CGM credentials via encrypted server-side endpoint
 async function saveCgmCredentials(email, password) {
-  const syncId = localStorage.getItem(SYNC_ID_KEY);
-  if (!syncId) return;
-  const supaUrl = localStorage.getItem(SYNC_URL_KEY);
-  const supaKey = localStorage.getItem(SYNC_KEY_KEY);
-  if (!supaUrl || !supaKey) return;
+  if (!currentUser) return;
   try {
-    await fetch(supaUrl + '/rest/v1/cgm_credentials?on_conflict=sync_id', {
+    await fetch('/api/cgm-credentials', {
       method: 'POST',
-      headers: { 'apikey': supaKey, 'Authorization': 'Bearer ' + supaKey, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
-      body: JSON.stringify({ sync_id: syncId, email, password })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'store', syncId: currentUser.id, email, password })
     });
   } catch (err) { console.warn('Failed to save CGM creds:', err); }
 }
@@ -1033,13 +1266,12 @@ async function subscribePush() {
       });
     }
 
-    const syncId = localStorage.getItem(SYNC_ID_KEY);
-    if (!syncId) return;
+    if (!currentUser) return;
 
     await fetch('/api/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'subscribe', syncId, subscription: sub.toJSON() })
+      body: JSON.stringify({ action: 'subscribe', syncId: currentUser.id, subscription: sub.toJSON() })
     });
     showToast('Push-Alerts aktiviert');
   } catch (err) {
@@ -1120,9 +1352,10 @@ function drawParticles() {
       }
     }
   }
-  requestAnimationFrame(drawParticles);
+  if (!document.hidden) requestAnimationFrame(drawParticles);
 }
 drawParticles();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) requestAnimationFrame(drawParticles); });
 
 // === RING GAUGE ===
 const gCanvas = document.getElementById('ringGauge');
@@ -1267,7 +1500,11 @@ function prefillAddForm() {
   document.getElementById('inputDate').value = now.toISOString().split('T')[0];
   document.getElementById('inputTime').value = now.toTimeString().slice(0,5);
   document.getElementById('inputBZ').value = '';
+  document.getElementById('inputBZ').placeholder = isMmol() ? 'z.B. 6.7' : 'z.B. 120';
+  document.querySelector('#sheetAdd label').textContent = 'Blutzucker (' + displayUnit() + ') *';
   document.getElementById('inputMeal').value = '';
+  document.getElementById('inputInsulin').value = '';
+  document.getElementById('inputInsulinType').value = '';
   document.getElementById('inputMeds').value = '';
   document.getElementById('inputSport').value = '';
   document.getElementById('inputMood').value = '';
@@ -1276,7 +1513,7 @@ function prefillAddForm() {
 }
 
 function saveEntry() {
-  const bz = parseInt(document.getElementById('inputBZ').value);
+  const bz = parseBZInput(document.getElementById('inputBZ').value);
   if (!bz || bz < 20 || bz > 600) {
     document.getElementById('inputBZ').style.borderColor = 'var(--red)';
     document.getElementById('inputBZ').focus();
@@ -1289,6 +1526,8 @@ function saveEntry() {
     date: document.getElementById('inputDate').value,
     time: document.getElementById('inputTime').value,
     meal: document.getElementById('inputMeal').value.trim(),
+    insulin: parseFloat(document.getElementById('inputInsulin').value) || null,
+    insulinType: document.getElementById('inputInsulinType').value || null,
     meds: document.getElementById('inputMeds').value.trim(),
     sport: document.getElementById('inputSport').value.trim(),
     mood: document.getElementById('inputMood').value.trim(),
@@ -1320,19 +1559,20 @@ function renderLog() {
     const color = sigColor(e.bz);
     const d = new Date(e.date+'T'+e.time);
     const dateStr = d.toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'2-digit'});
-    const timeStr = e.time;
-    const details = [e.meal, e.sport, e.mood].filter(Boolean).join(' · ') || 'Keine Details';
+    const timeStr = escapeHTML(e.time);
+    const insulinStr = e.insulin ? escapeHTML(e.insulin + 'IE ' + (e.insulinType === 'rapid' ? 'Bolus' : e.insulinType === 'long' ? 'Basal' : e.insulinType || '')) : '';
+    const details = [e.meal, insulinStr, e.sport, e.mood].filter(Boolean).map(escapeHTML).join(' · ') || 'Keine Details';
     return `<div class="log-entry">
-      <div class="log-bz" style="color:${color}">${e.bz}</div>
+      <div class="log-bz" style="color:${color}">${displayBZ(e.bz)}</div>
       <div class="log-details">
-        <div class="log-date">${dateStr} — ${timeStr}</div>
+        <div class="log-date">${escapeHTML(dateStr)} — ${timeStr}</div>
         ${details}
       </div>
       <div class="log-actions">
-        <button onclick="event.stopPropagation();editEntry(${e.id})" title="Bearbeiten">
+        <button onclick="event.stopPropagation();editEntry(${parseInt(e.id)})" title="Bearbeiten">
           <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
         </button>
-        <button onclick="event.stopPropagation();deleteEntry(${e.id})" title="Löschen">
+        <button onclick="event.stopPropagation();deleteEntry(${parseInt(e.id)})" title="Löschen">
           <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
         </button>
       </div>
@@ -1355,10 +1595,12 @@ function editEntry(id) {
   if (!entry) return;
 
   document.getElementById('editId').value = id;
-  document.getElementById('editBZ').value = entry.bz;
+  document.getElementById('editBZ').value = isMmol() ? mgToMmol(entry.bz) : entry.bz;
   document.getElementById('editDate').value = entry.date;
   document.getElementById('editTime').value = entry.time;
   document.getElementById('editMeal').value = entry.meal || '';
+  document.getElementById('editInsulin').value = entry.insulin || '';
+  document.getElementById('editInsulinType').value = entry.insulinType || '';
   document.getElementById('editMeds').value = entry.meds || '';
   document.getElementById('editSport').value = entry.sport || '';
   document.getElementById('editMood').value = entry.mood || '';
@@ -1373,7 +1615,7 @@ function closeEdit() {
 
 function updateEntry() {
   const id = parseInt(document.getElementById('editId').value);
-  const bz = parseInt(document.getElementById('editBZ').value);
+  const bz = parseBZInput(document.getElementById('editBZ').value);
   if (!bz || bz < 20 || bz > 600) return;
 
   let entries = getEntries();
@@ -1386,6 +1628,8 @@ function updateEntry() {
     date: document.getElementById('editDate').value,
     time: document.getElementById('editTime').value,
     meal: document.getElementById('editMeal').value.trim(),
+    insulin: parseFloat(document.getElementById('editInsulin').value) || null,
+    insulinType: document.getElementById('editInsulinType').value || null,
     meds: document.getElementById('editMeds').value.trim(),
     sport: document.getElementById('editSport').value.trim(),
     mood: document.getElementById('editMood').value.trim(),
@@ -1399,7 +1643,8 @@ function updateEntry() {
   updateDashboard();
   showToast('Aktualisiert');
   if (navigator.vibrate) navigator.vibrate(50);
-  syncPush(entries[idx]);
+  const updated = entries.find(e => e.id === id);
+  if (updated) syncPush(updated);
 }
 
 // === HbA1c / GMI ESTIMATION ===
@@ -1456,6 +1701,16 @@ function renderA1c(entries) {
 
 // === STATS ===
 let bzChart = null;
+let chartDays = 30;
+
+function setChartRange(days) {
+  chartDays = days;
+  document.querySelectorAll('#chartRangeSelector button').forEach(btn => {
+    btn.className = parseInt(btn.dataset.range) === days ? 'btn btn-primary' : 'btn btn-secondary';
+    btn.style.cssText = 'width:auto;padding:6px 14px;font-size:11px';
+  });
+  renderStats();
+}
 
 function renderStats() {
   const entries = getEntries();
@@ -1487,11 +1742,12 @@ function renderStats() {
 
   document.getElementById('statsInRange').textContent = pct + '%';
   document.getElementById('statsInRange').style.color = pct >= 70 ? '#00FF88' : pct >= 50 ? '#FFE600' : '#FF2222';
-  document.getElementById('stats7d').textContent = avg(last7) ?? '--';
-  document.getElementById('stats7d').style.color = sigColor(avg(last7) || 120);
-  document.getElementById('stats14d').textContent = avg(last14) ?? '--';
-  document.getElementById('stats14d').style.color = sigColor(avg(last14) || 120);
-  document.getElementById('statsAll').textContent = avg(all) ?? '--';
+  const a7 = avg(last7), a14 = avg(last14), aAll = avg(all);
+  document.getElementById('stats7d').textContent = a7 ? displayBZ(a7) : '--';
+  document.getElementById('stats7d').style.color = sigColor(a7 || 120);
+  document.getElementById('stats14d').textContent = a14 ? displayBZ(a14) : '--';
+  document.getElementById('stats14d').style.color = sigColor(a14 || 120);
+  document.getElementById('statsAll').textContent = aAll ? displayBZ(aAll) : '--';
 
   // Motivation message based on GMI
   const avg7 = avg(last7);
@@ -1506,14 +1762,18 @@ function renderStats() {
   }
   document.getElementById('statsMotivation').textContent = msg || 'Mehr Daten nötig.';
 
-  // Chart
-  const chartEntries = [...entries].reverse().slice(-30);
+  // Chart — time-range based
+  const cutoff = new Date(now - chartDays * 86400000);
+  const chartEntries = entries.filter(e => new Date(e.date) >= cutoff).reverse();
   const labels = chartEntries.map(e => {
     const d = new Date(e.date);
-    return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'});
+    return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
   });
-  const data = chartEntries.map(e => e.bz);
+  const data = chartEntries.map(e => displayBZ(e.bz));
   const colors = chartEntries.map(e => sigColor(e.bz));
+  const unit = displayUnit();
+  const lo = isMmol() ? mgToMmol(70) : 70;
+  const hi = isMmol() ? mgToMmol(180) : 180;
 
   if (bzChart) bzChart.destroy();
   const ctx = document.getElementById('bzChart').getContext('2d');
@@ -1522,13 +1782,13 @@ function renderStats() {
     data: {
       labels,
       datasets: [{
-        label: 'BZ (mg/dl)',
+        label: 'BZ (' + unit + ')',
         data,
         borderColor: '#00FF88',
         backgroundColor: 'rgba(0,255,136,.1)',
         fill: true,
         tension: .3,
-        pointRadius: 4,
+        pointRadius: chartEntries.length > 100 ? 1 : 4,
         pointBackgroundColor: colors,
         pointBorderColor: colors,
         borderWidth: 2
@@ -1537,35 +1797,37 @@ function renderStats() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        annotation: {}
-      },
+      plugins: { legend: { display: false } },
       scales: {
         x: {
-          ticks: { color: '#555570', font: { size: 10 } },
+          ticks: { color: '#555570', font: { size: 10 }, maxTicksLimit: 10 },
           grid: { color: 'rgba(255,255,255,.04)' }
         },
         y: {
-          min: 60,
+          min: isMmol() ? 2 : 40,
           ticks: { color: '#555570', font: { size: 10 } },
           grid: { color: 'rgba(255,255,255,.04)' }
         }
       }
     },
     plugins: [{
-      id: 'targetLine',
-      afterDraw(chart) {
+      id: 'targetBand',
+      beforeDraw(chart) {
         const yScale = chart.scales.y;
-        const y140 = yScale.getPixelForValue(140);
+        const yLo = yScale.getPixelForValue(lo);
+        const yHi = yScale.getPixelForValue(hi);
         const ctx = chart.ctx;
+        const { left, right } = chart.chartArea;
         ctx.save();
-        ctx.setLineDash([6,4]);
-        ctx.strokeStyle = 'rgba(255,230,0,.3)';
+        ctx.fillStyle = 'rgba(0,255,136,.06)';
+        ctx.fillRect(left, yHi, right - left, yLo - yHi);
+        // Draw border lines
+        ctx.setLineDash([6, 4]);
         ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(0,255,136,.2)';
         ctx.beginPath();
-        ctx.moveTo(chart.chartArea.left, y140);
-        ctx.lineTo(chart.chartArea.right, y140);
+        ctx.moveTo(left, yLo); ctx.lineTo(right, yLo);
+        ctx.moveTo(left, yHi); ctx.lineTo(right, yHi);
         ctx.stroke();
         ctx.restore();
       }
@@ -1576,6 +1838,8 @@ function renderStats() {
 // === SETTINGS ===
 function renderSettings() {
   const s = getSettings();
+  document.getElementById('toggleUnit').classList.toggle('on', s.unit === 'mmol/L');
+  document.getElementById('unitDesc').textContent = s.unit === 'mmol/L' ? 'mmol/L (International)' : 'mg/dL (Standard)';
   document.getElementById('toggleNotif').classList.toggle('on', s.notifications);
   document.getElementById('notifTimesContainer').style.display = s.notifications ? 'block' : 'none';
   renderNotifTimes();
@@ -1603,7 +1867,7 @@ async function toggleNotifications() {
 function renderNotifTimes() {
   const s = getSettings();
   document.getElementById('notifTimes').innerHTML = s.notifTimes.map((t, i) =>
-    `<div class="notif-time">${t} <span style="cursor:pointer;margin-left:6px;color:var(--red)" onclick="removeNotifTime(${i})">×</span></div>`
+    `<div class="notif-time">${escapeHTML(t)} <span style="cursor:pointer;margin-left:6px;color:var(--red)" onclick="removeNotifTime(${parseInt(i)})">×</span></div>`
   ).join('');
 }
 
@@ -1678,9 +1942,10 @@ function exportCSV() {
   if (!entries.length) { alert('Keine Einträge zum Exportieren.'); return; }
 
   const BOM = '\uFEFF';
-  const header = 'Datum;Uhrzeit;Blutzucker (mg/dl);Mahlzeit;Medikamente;Sport;Stimmung;Gewicht (kg)\n';
+  const unit = displayUnit();
+  const header = `Datum;Uhrzeit;Blutzucker (${unit});Insulin (IE);Insulin-Typ;Mahlzeit;Medikamente;Sport;Stimmung;Gewicht (kg)\n`;
   const rows = entries.map(e =>
-    `${e.date};${e.time};${e.bz};${e.meal||''};${e.meds||''};${e.sport||''};${e.mood||''};${e.weight||''}`
+    `${e.date};${e.time};${displayBZ(e.bz)};${e.insulin||''};${e.insulinType||''};${e.meal||''};${e.meds||''};${e.sport||''};${e.mood||''};${e.weight||''}`
   ).join('\n');
 
   const blob = new Blob([BOM + header + rows], { type: 'text/csv;charset=utf-8' });
@@ -1705,6 +1970,8 @@ function clearAllData() {
   localStorage.removeItem(SYNC_ID_KEY);
   localStorage.removeItem(SYNC_LAST_KEY);
   localStorage.removeItem(USER_EMAIL_KEY);
+  localStorage.removeItem(CGM_AUTH_KEY);
+  localStorage.removeItem(CGM_PATIENT_KEY);
   setSyncStatus('off');
   location.reload();
 }
@@ -1714,12 +1981,15 @@ function updateDashboard() {
   const entries = getEntries();
   const latest = entries[0];
 
+  // Update gauge unit label
+  document.querySelector('.gauge-value .unit').textContent = displayUnit();
+
   if (latest) {
     const bz = latest.bz;
     const color = sigColor(bz);
     setSig(color);
     currentParticleColor = color;
-    document.getElementById('gaugeNumber').textContent = bz;
+    document.getElementById('gaugeNumber').textContent = displayBZ(bz);
     gaugeAnim.target = bz;
 
     const d = new Date(latest.date + 'T' + latest.time);
@@ -1751,14 +2021,13 @@ function updateDashboard() {
   const last7 = entries.filter(e => new Date(e.date) >= d7).map(e => e.bz);
   const avg7 = last7.length ? Math.round(last7.reduce((a,b)=>a+b,0)/last7.length) : null;
 
-  document.getElementById('statAvg').textContent = avg7 ?? '--';
+  document.getElementById('statAvg').textContent = avg7 ? displayBZ(avg7) : '--';
   if (avg7) document.getElementById('statAvg').style.color = sigColor(avg7);
 
   // In Range: international standard 70-180 mg/dL
   const inRange = all.filter(v => v >= 70 && v <= 180).length;
   const pct = all.length ? Math.round(inRange / all.length * 100) + '%' : '--';
   document.getElementById('statRange').textContent = pct;
-  document.getElementById('statCount').textContent = entries.length;
 
   // Streak
   document.getElementById('statStreak').textContent = calcStreak(entries);
@@ -1779,7 +2048,7 @@ function updateDashboard() {
 // === KEYBOARD SHORTCUTS ===
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.activeElement?.id === 'loginEmail') {
-    handleLogin();
+    sendOTP();
     return;
   }
   if (e.key === 'Escape') {
@@ -1889,7 +2158,7 @@ if ('serviceWorker' in navigator) {
       });
     });
     // Re-subscribe push on every launch (iOS silently drops subscriptions)
-    if (isLoggedIn()) subscribePush();
+    // Delayed — initAuth() will handle this after session is confirmed
   }).catch(err => console.warn('SW registration failed:', err));
 }
 
@@ -1903,19 +2172,9 @@ setInterval(() => {
 }, 60000);
 
 // === INIT ===
-checkLoginState();
 updateDashboard();
-if (isLoggedIn()) {
-  showDailyFact();
-  scheduleNotifications();
-  setSyncStatus('syncing');
-  syncPull().then(() => setSyncStatus('synced')).catch(() => setSyncStatus('error'));
-  if (getSettings().cgmEnabled && getCgmAuth()) startCgmPolling();
-} else {
-  setSyncStatus('off');
-  // Focus email input after animation
-  setTimeout(() => document.getElementById('loginEmail')?.focus(), 500);
-}
+setSyncStatus('off');
+initAuth();
 </script>
 </body>
 </html>

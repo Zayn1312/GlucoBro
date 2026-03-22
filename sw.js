@@ -1,4 +1,4 @@
-const CACHE_NAME = 'glucobro-v5';
+const CACHE_NAME = 'glucobro-v6';
 const APP_SHELL = [
   'GlucoBro.html',
   'manifest.json',
@@ -6,7 +6,8 @@ const APP_SHELL = [
   'icon-512.png',
   'apple-touch-icon.png',
   'https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600;700&display=swap',
-  'https://cdn.jsdelivr.net/npm/chart.js@4'
+  'https://cdn.jsdelivr.net/npm/chart.js@4',
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'
 ];
 
 // Install: cache app shell
