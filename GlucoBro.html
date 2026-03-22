@@ -549,6 +549,12 @@ canvas#ringGauge{width:280px;height:280px}
 <div class="toast" id="toast"></div>
 
 <script>
+// === SECURITY: HTML ESCAPER ===
+function escapeHTML(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 // === DATA ===
 const STORAGE_KEY = 'glucobro_entries';
 const SETTINGS_KEY = 'glucobro_settings';
@@ -977,18 +983,15 @@ function stopCgmPolling() {
   document.getElementById('cgmBadge').classList.remove('active');
 }
 
-// Save CGM credentials to Supabase (for cron-based push alerts)
+// Save CGM credentials via encrypted server-side endpoint
 async function saveCgmCredentials(email, password) {
   const syncId = localStorage.getItem(SYNC_ID_KEY);
   if (!syncId) return;
-  const supaUrl = localStorage.getItem(SYNC_URL_KEY);
-  const supaKey = localStorage.getItem(SYNC_KEY_KEY);
-  if (!supaUrl || !supaKey) return;
   try {
-    await fetch(supaUrl + '/rest/v1/cgm_credentials?on_conflict=sync_id', {
+    await fetch('/api/cgm-credentials', {
       method: 'POST',
-      headers: { 'apikey': supaKey, 'Authorization': 'Bearer ' + supaKey, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
-      body: JSON.stringify({ sync_id: syncId, email, password })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'store', syncId, email, password })
     });
   } catch (err) { console.warn('Failed to save CGM creds:', err); }
 }
@@ -1120,9 +1123,10 @@ function drawParticles() {
       }
     }
   }
-  requestAnimationFrame(drawParticles);
+  if (!document.hidden) requestAnimationFrame(drawParticles);
 }
 drawParticles();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) requestAnimationFrame(drawParticles); });
 
 // === RING GAUGE ===
 const gCanvas = document.getElementById('ringGauge');
@@ -1320,19 +1324,19 @@ function renderLog() {
     const color = sigColor(e.bz);
     const d = new Date(e.date+'T'+e.time);
     const dateStr = d.toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'2-digit'});
-    const timeStr = e.time;
-    const details = [e.meal, e.sport, e.mood].filter(Boolean).join(' · ') || 'Keine Details';
+    const timeStr = escapeHTML(e.time);
+    const details = [e.meal, e.sport, e.mood].filter(Boolean).map(escapeHTML).join(' · ') || 'Keine Details';
     return `<div class="log-entry">
-      <div class="log-bz" style="color:${color}">${e.bz}</div>
+      <div class="log-bz" style="color:${color}">${parseInt(e.bz)}</div>
       <div class="log-details">
-        <div class="log-date">${dateStr} — ${timeStr}</div>
+        <div class="log-date">${escapeHTML(dateStr)} — ${timeStr}</div>
         ${details}
       </div>
       <div class="log-actions">
-        <button onclick="event.stopPropagation();editEntry(${e.id})" title="Bearbeiten">
+        <button onclick="event.stopPropagation();editEntry(${parseInt(e.id)})" title="Bearbeiten">
           <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
         </button>
-        <button onclick="event.stopPropagation();deleteEntry(${e.id})" title="Löschen">
+        <button onclick="event.stopPropagation();deleteEntry(${parseInt(e.id)})" title="Löschen">
           <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
         </button>
       </div>
@@ -1399,7 +1403,8 @@ function updateEntry() {
   updateDashboard();
   showToast('Aktualisiert');
   if (navigator.vibrate) navigator.vibrate(50);
-  syncPush(entries[idx]);
+  const updated = entries.find(e => e.id === id);
+  if (updated) syncPush(updated);
 }
 
 // === HbA1c / GMI ESTIMATION ===
@@ -1603,7 +1608,7 @@ async function toggleNotifications() {
 function renderNotifTimes() {
   const s = getSettings();
   document.getElementById('notifTimes').innerHTML = s.notifTimes.map((t, i) =>
-    `<div class="notif-time">${t} <span style="cursor:pointer;margin-left:6px;color:var(--red)" onclick="removeNotifTime(${i})">×</span></div>`
+    `<div class="notif-time">${escapeHTML(t)} <span style="cursor:pointer;margin-left:6px;color:var(--red)" onclick="removeNotifTime(${parseInt(i)})">×</span></div>`
   ).join('');
 }
 
@@ -1705,6 +1710,8 @@ function clearAllData() {
   localStorage.removeItem(SYNC_ID_KEY);
   localStorage.removeItem(SYNC_LAST_KEY);
   localStorage.removeItem(USER_EMAIL_KEY);
+  localStorage.removeItem(CGM_AUTH_KEY);
+  localStorage.removeItem(CGM_PATIENT_KEY);
   setSyncStatus('off');
   location.reload();
 }
@@ -1758,7 +1765,6 @@ function updateDashboard() {
   const inRange = all.filter(v => v >= 70 && v <= 180).length;
   const pct = all.length ? Math.round(inRange / all.length * 100) + '%' : '--';
   document.getElementById('statRange').textContent = pct;
-  document.getElementById('statCount').textContent = entries.length;
 
   // Streak
   document.getElementById('statStreak').textContent = calcStreak(entries);

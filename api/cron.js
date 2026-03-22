@@ -3,8 +3,9 @@ const https = require('https');
 const crypto = require('crypto');
 const zlib = require('zlib');
 
-const SUPA_HOST = 'hvcuspxmswhlzkatfxst.supabase.co';
-const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2Y3VzcHhtc3dobHprYXRmeHN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxODUwODMsImV4cCI6MjA4ODc2MTA4M30.MiV1Fdrz3dT-BLTxH_d0SPqiLtMxU-87Af6u_ql95NU';
+const SUPA_HOST = process.env.SUPABASE_HOST || 'hvcuspxmswhlzkatfxst.supabase.co';
+const SUPA_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+if (!SUPA_KEY) throw new Error('SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY env var required');
 
 const LLU_HEADERS = {
   'accept-encoding': 'gzip',
@@ -19,9 +20,22 @@ const REGION_URLS = {
   EU2: 'api-eu2.libreview.io', AE: 'api-ae.libreview.io', AP: 'api-ap.libreview.io',
 };
 
+const ENC_KEY = process.env.CGM_ENCRYPTION_KEY; // 32-byte hex for AES-256-GCM
+
 const BZ_HIGH = 180;
 const BZ_LOW = 70;
 const TREND_ARROWS = { 1: '↓↓', 2: '↓', 3: '→', 4: '↑', 5: '↑↑' };
+
+function decryptField(data, keyHex) {
+  if (!keyHex || !data || !data.includes(':')) return data; // unencrypted fallback
+  try {
+    const [ivHex, encHex, tagHex] = data.split(':');
+    const key = Buffer.from(keyHex, 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+    decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+    return decipher.update(Buffer.from(encHex, 'hex'), null, 'utf8') + decipher.final('utf8');
+  } catch { return data; } // fallback to raw value if not encrypted
+}
 
 function httpsReq(hostname, path, method, headers, body) {
   return new Promise((resolve, reject) => {
@@ -102,7 +116,9 @@ module.exports = async function handler(req, res) {
     const results = [];
 
     for (const cred of cgmCreds) {
-      const { sync_id, email, password } = cred;
+      const { sync_id } = cred;
+      const email = decryptField(cred.email, ENC_KEY);
+      const password = decryptField(cred.password, ENC_KEY);
 
       // Login to LibreLinkUp
       const auth = await lluLogin(email, password);
