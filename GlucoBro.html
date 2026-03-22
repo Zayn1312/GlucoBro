@@ -377,6 +377,21 @@ canvas#ringGauge{width:280px;height:280px}
       <label>Mahlzeit</label>
       <input type="text" id="inputMeal" placeholder="Was hast du gegessen?">
     </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Insulin (Einheiten)</label>
+        <input type="number" id="inputInsulin" placeholder="z.B. 10" step="0.5" inputmode="decimal">
+      </div>
+      <div class="form-group">
+        <label>Insulin-Typ</label>
+        <select id="inputInsulinType" style="width:100%;padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Inter',sans-serif;font-size:14px">
+          <option value="">— Kein —</option>
+          <option value="rapid">Rapid (Bolus)</option>
+          <option value="long">Langzeit (Basal)</option>
+          <option value="mixed">Misch</option>
+        </select>
+      </div>
+    </div>
     <div class="form-group">
       <label>Medikamente / Supplements</label>
       <input type="text" id="inputMeds" placeholder="z.B. Opipramol, Vitamin D">
@@ -434,6 +449,12 @@ canvas#ringGauge{width:280px;height:280px}
       <div class="avg-item"><div class="av" id="statsAll" style="color:var(--text)">--</div><div class="al">Gesamt</div></div>
     </div>
     <div class="motivation-card" id="statsMotivation" style="margin-top:0;margin-bottom:16px"></div>
+    <div style="display:flex;gap:6px;margin-bottom:12px;justify-content:center" id="chartRangeSelector">
+      <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:11px" onclick="setChartRange(7)" data-range="7">7T</button>
+      <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:11px" onclick="setChartRange(14)" data-range="14">14T</button>
+      <button class="btn btn-primary" style="width:auto;padding:6px 14px;font-size:11px" onclick="setChartRange(30)" data-range="30">30T</button>
+      <button class="btn btn-secondary" style="width:auto;padding:6px 14px;font-size:11px" onclick="setChartRange(90)" data-range="90">90T</button>
+    </div>
     <div class="chart-container">
       <canvas id="bzChart"></canvas>
     </div>
@@ -445,6 +466,13 @@ canvas#ringGauge{width:280px;height:280px}
   <div class="sheet-handle"></div>
   <div class="sheet-content">
     <div class="sheet-title">Einstellungen</div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">Einheit</div>
+        <div class="setting-desc" id="unitDesc">mg/dL (Standard)</div>
+      </div>
+      <div class="toggle" id="toggleUnit" onclick="toggleUnit()"></div>
+    </div>
     <div class="setting-row">
       <div>
         <div class="setting-label">Push Notifications</div>
@@ -546,6 +574,21 @@ canvas#ringGauge{width:280px;height:280px}
       <div class="form-group">
         <label>Mahlzeit</label>
         <input type="text" id="editMeal">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Insulin (Einheiten)</label>
+          <input type="number" id="editInsulin" step="0.5" inputmode="decimal">
+        </div>
+        <div class="form-group">
+          <label>Insulin-Typ</label>
+          <select id="editInsulinType" style="width:100%;padding:12px 16px;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-family:'Inter',sans-serif;font-size:14px">
+            <option value="">— Kein —</option>
+            <option value="rapid">Rapid (Bolus)</option>
+            <option value="long">Langzeit (Basal)</option>
+            <option value="mixed">Misch</option>
+          </select>
+        </div>
       </div>
       <div class="form-group">
         <label>Medikamente / Supplements</label>
@@ -854,13 +897,34 @@ function getSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {
       notifications: false,
-      notifTimes: ['07:00','09:00','14:00','20:00']
+      notifTimes: ['07:00','09:00','14:00','20:00'],
+      unit: 'mg/dL'
     };
   } catch {
-    return { notifications: false, notifTimes: ['07:00','09:00','14:00','20:00'] };
+    return { notifications: false, notifTimes: ['07:00','09:00','14:00','20:00'], unit: 'mg/dL' };
   }
 }
 function saveSettings(s) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
+
+// === UNIT CONVERSION ===
+function isMmol() { return getSettings().unit === 'mmol/L'; }
+function mgToMmol(mg) { return +(mg / 18.0182).toFixed(1); }
+function mmolToMg(mmol) { return Math.round(mmol * 18.0182); }
+function displayBZ(mg) { return isMmol() ? mgToMmol(mg) : mg; }
+function displayUnit() { return isMmol() ? 'mmol/L' : 'mg/dL'; }
+function parseBZInput(val) {
+  const num = parseFloat(val);
+  if (isNaN(num)) return NaN;
+  return isMmol() ? mmolToMg(num) : Math.round(num);
+}
+
+function toggleUnit() {
+  const s = getSettings();
+  s.unit = s.unit === 'mmol/L' ? 'mg/dL' : 'mmol/L';
+  saveSettings(s);
+  renderSettings();
+  updateDashboard();
+}
 
 // === CLOUD SYNC (Supabase Auth) ===
 function isSyncEnabled() { return isLoggedIn(); }
@@ -900,6 +964,8 @@ async function syncPush(entry) {
       date: entry.date,
       time: entry.time,
       meal: entry.meal || '',
+      insulin: entry.insulin || null,
+      insulin_type: entry.insulinType || null,
       meds: entry.meds || '',
       sport: entry.sport || '',
       mood: entry.mood || '',
@@ -936,7 +1002,7 @@ async function syncPull() {
 
     for (const r of remote) {
       if (!localMap.has(r.id)) {
-        local.push({ id: r.id, bz: r.bz, date: r.date, time: r.time, meal: r.meal, meds: r.meds, sport: r.sport, mood: r.mood, weight: r.weight });
+        local.push({ id: r.id, bz: r.bz, date: r.date, time: r.time, meal: r.meal, insulin: r.insulin, insulinType: r.insulin_type, meds: r.meds, sport: r.sport, mood: r.mood, weight: r.weight });
         changed = true;
       }
     }
@@ -1434,7 +1500,11 @@ function prefillAddForm() {
   document.getElementById('inputDate').value = now.toISOString().split('T')[0];
   document.getElementById('inputTime').value = now.toTimeString().slice(0,5);
   document.getElementById('inputBZ').value = '';
+  document.getElementById('inputBZ').placeholder = isMmol() ? 'z.B. 6.7' : 'z.B. 120';
+  document.querySelector('#sheetAdd label').textContent = 'Blutzucker (' + displayUnit() + ') *';
   document.getElementById('inputMeal').value = '';
+  document.getElementById('inputInsulin').value = '';
+  document.getElementById('inputInsulinType').value = '';
   document.getElementById('inputMeds').value = '';
   document.getElementById('inputSport').value = '';
   document.getElementById('inputMood').value = '';
@@ -1443,7 +1513,7 @@ function prefillAddForm() {
 }
 
 function saveEntry() {
-  const bz = parseInt(document.getElementById('inputBZ').value);
+  const bz = parseBZInput(document.getElementById('inputBZ').value);
   if (!bz || bz < 20 || bz > 600) {
     document.getElementById('inputBZ').style.borderColor = 'var(--red)';
     document.getElementById('inputBZ').focus();
@@ -1456,6 +1526,8 @@ function saveEntry() {
     date: document.getElementById('inputDate').value,
     time: document.getElementById('inputTime').value,
     meal: document.getElementById('inputMeal').value.trim(),
+    insulin: parseFloat(document.getElementById('inputInsulin').value) || null,
+    insulinType: document.getElementById('inputInsulinType').value || null,
     meds: document.getElementById('inputMeds').value.trim(),
     sport: document.getElementById('inputSport').value.trim(),
     mood: document.getElementById('inputMood').value.trim(),
@@ -1488,9 +1560,10 @@ function renderLog() {
     const d = new Date(e.date+'T'+e.time);
     const dateStr = d.toLocaleDateString('de-DE', {day:'2-digit',month:'2-digit',year:'2-digit'});
     const timeStr = escapeHTML(e.time);
-    const details = [e.meal, e.sport, e.mood].filter(Boolean).map(escapeHTML).join(' · ') || 'Keine Details';
+    const insulinStr = e.insulin ? escapeHTML(e.insulin + 'IE ' + (e.insulinType === 'rapid' ? 'Bolus' : e.insulinType === 'long' ? 'Basal' : e.insulinType || '')) : '';
+    const details = [e.meal, insulinStr, e.sport, e.mood].filter(Boolean).map(escapeHTML).join(' · ') || 'Keine Details';
     return `<div class="log-entry">
-      <div class="log-bz" style="color:${color}">${parseInt(e.bz)}</div>
+      <div class="log-bz" style="color:${color}">${displayBZ(e.bz)}</div>
       <div class="log-details">
         <div class="log-date">${escapeHTML(dateStr)} — ${timeStr}</div>
         ${details}
@@ -1522,10 +1595,12 @@ function editEntry(id) {
   if (!entry) return;
 
   document.getElementById('editId').value = id;
-  document.getElementById('editBZ').value = entry.bz;
+  document.getElementById('editBZ').value = isMmol() ? mgToMmol(entry.bz) : entry.bz;
   document.getElementById('editDate').value = entry.date;
   document.getElementById('editTime').value = entry.time;
   document.getElementById('editMeal').value = entry.meal || '';
+  document.getElementById('editInsulin').value = entry.insulin || '';
+  document.getElementById('editInsulinType').value = entry.insulinType || '';
   document.getElementById('editMeds').value = entry.meds || '';
   document.getElementById('editSport').value = entry.sport || '';
   document.getElementById('editMood').value = entry.mood || '';
@@ -1540,7 +1615,7 @@ function closeEdit() {
 
 function updateEntry() {
   const id = parseInt(document.getElementById('editId').value);
-  const bz = parseInt(document.getElementById('editBZ').value);
+  const bz = parseBZInput(document.getElementById('editBZ').value);
   if (!bz || bz < 20 || bz > 600) return;
 
   let entries = getEntries();
@@ -1553,6 +1628,8 @@ function updateEntry() {
     date: document.getElementById('editDate').value,
     time: document.getElementById('editTime').value,
     meal: document.getElementById('editMeal').value.trim(),
+    insulin: parseFloat(document.getElementById('editInsulin').value) || null,
+    insulinType: document.getElementById('editInsulinType').value || null,
     meds: document.getElementById('editMeds').value.trim(),
     sport: document.getElementById('editSport').value.trim(),
     mood: document.getElementById('editMood').value.trim(),
@@ -1624,6 +1701,16 @@ function renderA1c(entries) {
 
 // === STATS ===
 let bzChart = null;
+let chartDays = 30;
+
+function setChartRange(days) {
+  chartDays = days;
+  document.querySelectorAll('#chartRangeSelector button').forEach(btn => {
+    btn.className = parseInt(btn.dataset.range) === days ? 'btn btn-primary' : 'btn btn-secondary';
+    btn.style.cssText = 'width:auto;padding:6px 14px;font-size:11px';
+  });
+  renderStats();
+}
 
 function renderStats() {
   const entries = getEntries();
@@ -1655,11 +1742,12 @@ function renderStats() {
 
   document.getElementById('statsInRange').textContent = pct + '%';
   document.getElementById('statsInRange').style.color = pct >= 70 ? '#00FF88' : pct >= 50 ? '#FFE600' : '#FF2222';
-  document.getElementById('stats7d').textContent = avg(last7) ?? '--';
-  document.getElementById('stats7d').style.color = sigColor(avg(last7) || 120);
-  document.getElementById('stats14d').textContent = avg(last14) ?? '--';
-  document.getElementById('stats14d').style.color = sigColor(avg(last14) || 120);
-  document.getElementById('statsAll').textContent = avg(all) ?? '--';
+  const a7 = avg(last7), a14 = avg(last14), aAll = avg(all);
+  document.getElementById('stats7d').textContent = a7 ? displayBZ(a7) : '--';
+  document.getElementById('stats7d').style.color = sigColor(a7 || 120);
+  document.getElementById('stats14d').textContent = a14 ? displayBZ(a14) : '--';
+  document.getElementById('stats14d').style.color = sigColor(a14 || 120);
+  document.getElementById('statsAll').textContent = aAll ? displayBZ(aAll) : '--';
 
   // Motivation message based on GMI
   const avg7 = avg(last7);
@@ -1674,14 +1762,18 @@ function renderStats() {
   }
   document.getElementById('statsMotivation').textContent = msg || 'Mehr Daten nötig.';
 
-  // Chart
-  const chartEntries = [...entries].reverse().slice(-30);
+  // Chart — time-range based
+  const cutoff = new Date(now - chartDays * 86400000);
+  const chartEntries = entries.filter(e => new Date(e.date) >= cutoff).reverse();
   const labels = chartEntries.map(e => {
     const d = new Date(e.date);
-    return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'});
+    return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
   });
-  const data = chartEntries.map(e => e.bz);
+  const data = chartEntries.map(e => displayBZ(e.bz));
   const colors = chartEntries.map(e => sigColor(e.bz));
+  const unit = displayUnit();
+  const lo = isMmol() ? mgToMmol(70) : 70;
+  const hi = isMmol() ? mgToMmol(180) : 180;
 
   if (bzChart) bzChart.destroy();
   const ctx = document.getElementById('bzChart').getContext('2d');
@@ -1690,13 +1782,13 @@ function renderStats() {
     data: {
       labels,
       datasets: [{
-        label: 'BZ (mg/dl)',
+        label: 'BZ (' + unit + ')',
         data,
         borderColor: '#00FF88',
         backgroundColor: 'rgba(0,255,136,.1)',
         fill: true,
         tension: .3,
-        pointRadius: 4,
+        pointRadius: chartEntries.length > 100 ? 1 : 4,
         pointBackgroundColor: colors,
         pointBorderColor: colors,
         borderWidth: 2
@@ -1705,35 +1797,37 @@ function renderStats() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        annotation: {}
-      },
+      plugins: { legend: { display: false } },
       scales: {
         x: {
-          ticks: { color: '#555570', font: { size: 10 } },
+          ticks: { color: '#555570', font: { size: 10 }, maxTicksLimit: 10 },
           grid: { color: 'rgba(255,255,255,.04)' }
         },
         y: {
-          min: 60,
+          min: isMmol() ? 2 : 40,
           ticks: { color: '#555570', font: { size: 10 } },
           grid: { color: 'rgba(255,255,255,.04)' }
         }
       }
     },
     plugins: [{
-      id: 'targetLine',
-      afterDraw(chart) {
+      id: 'targetBand',
+      beforeDraw(chart) {
         const yScale = chart.scales.y;
-        const y140 = yScale.getPixelForValue(140);
+        const yLo = yScale.getPixelForValue(lo);
+        const yHi = yScale.getPixelForValue(hi);
         const ctx = chart.ctx;
+        const { left, right } = chart.chartArea;
         ctx.save();
-        ctx.setLineDash([6,4]);
-        ctx.strokeStyle = 'rgba(255,230,0,.3)';
+        ctx.fillStyle = 'rgba(0,255,136,.06)';
+        ctx.fillRect(left, yHi, right - left, yLo - yHi);
+        // Draw border lines
+        ctx.setLineDash([6, 4]);
         ctx.lineWidth = 1;
+        ctx.strokeStyle = 'rgba(0,255,136,.2)';
         ctx.beginPath();
-        ctx.moveTo(chart.chartArea.left, y140);
-        ctx.lineTo(chart.chartArea.right, y140);
+        ctx.moveTo(left, yLo); ctx.lineTo(right, yLo);
+        ctx.moveTo(left, yHi); ctx.lineTo(right, yHi);
         ctx.stroke();
         ctx.restore();
       }
@@ -1744,6 +1838,8 @@ function renderStats() {
 // === SETTINGS ===
 function renderSettings() {
   const s = getSettings();
+  document.getElementById('toggleUnit').classList.toggle('on', s.unit === 'mmol/L');
+  document.getElementById('unitDesc').textContent = s.unit === 'mmol/L' ? 'mmol/L (International)' : 'mg/dL (Standard)';
   document.getElementById('toggleNotif').classList.toggle('on', s.notifications);
   document.getElementById('notifTimesContainer').style.display = s.notifications ? 'block' : 'none';
   renderNotifTimes();
@@ -1846,9 +1942,10 @@ function exportCSV() {
   if (!entries.length) { alert('Keine Einträge zum Exportieren.'); return; }
 
   const BOM = '\uFEFF';
-  const header = 'Datum;Uhrzeit;Blutzucker (mg/dl);Mahlzeit;Medikamente;Sport;Stimmung;Gewicht (kg)\n';
+  const unit = displayUnit();
+  const header = `Datum;Uhrzeit;Blutzucker (${unit});Insulin (IE);Insulin-Typ;Mahlzeit;Medikamente;Sport;Stimmung;Gewicht (kg)\n`;
   const rows = entries.map(e =>
-    `${e.date};${e.time};${e.bz};${e.meal||''};${e.meds||''};${e.sport||''};${e.mood||''};${e.weight||''}`
+    `${e.date};${e.time};${displayBZ(e.bz)};${e.insulin||''};${e.insulinType||''};${e.meal||''};${e.meds||''};${e.sport||''};${e.mood||''};${e.weight||''}`
   ).join('\n');
 
   const blob = new Blob([BOM + header + rows], { type: 'text/csv;charset=utf-8' });
@@ -1884,12 +1981,15 @@ function updateDashboard() {
   const entries = getEntries();
   const latest = entries[0];
 
+  // Update gauge unit label
+  document.querySelector('.gauge-value .unit').textContent = displayUnit();
+
   if (latest) {
     const bz = latest.bz;
     const color = sigColor(bz);
     setSig(color);
     currentParticleColor = color;
-    document.getElementById('gaugeNumber').textContent = bz;
+    document.getElementById('gaugeNumber').textContent = displayBZ(bz);
     gaugeAnim.target = bz;
 
     const d = new Date(latest.date + 'T' + latest.time);
@@ -1921,7 +2021,7 @@ function updateDashboard() {
   const last7 = entries.filter(e => new Date(e.date) >= d7).map(e => e.bz);
   const avg7 = last7.length ? Math.round(last7.reduce((a,b)=>a+b,0)/last7.length) : null;
 
-  document.getElementById('statAvg').textContent = avg7 ?? '--';
+  document.getElementById('statAvg').textContent = avg7 ? displayBZ(avg7) : '--';
   if (avg7) document.getElementById('statAvg').style.color = sigColor(avg7);
 
   // In Range: international standard 70-180 mg/dL
