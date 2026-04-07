@@ -19,11 +19,5 @@
         { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://*.supabase.co https://api-eu.libreview.io https://api-de.libreview.io https://api.libreview.io https://api-fr.libreview.io https://api-ca.libreview.io https://api-au.libreview.io https://api-eu2.libreview.io https://api-ae.libreview.io https://api-ap.libreview.io; img-src 'self' data:; manifest-src 'self'; worker-src 'self'" }
       ]
     }
-  ],
-  "crons": [
-    {
-      "path": "/api/cron",
-      "schedule": "*/5 * * * *"
-    }
   ]
 }
