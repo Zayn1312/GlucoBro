@@ -12,6 +12,7 @@
 <meta name="apple-mobile-web-app-title" content="GlucoBro">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -160,6 +161,46 @@ canvas#ringGauge{width:280px;height:280px}
 .login-user{display:flex;align-items:center;gap:8px;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .login-user-email{font-size:11px;color:var(--text2);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+/* Auth Tabs */
+.auth-tabs{display:flex;gap:0;margin-bottom:24px;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border)}
+.auth-tab{flex:1;padding:12px;text-align:center;font-size:13px;font-weight:600;cursor:pointer;background:var(--surface);color:var(--text2);transition:all .2s;border:none;font-family:'Inter',sans-serif}
+.auth-tab.active{background:var(--sig);color:var(--bg)}
+.login-form input[type="password"]{width:100%;padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'Inter',sans-serif;font-size:16px;outline:none;transition:border-color .2s;margin-bottom:16px;text-align:center}
+.login-form input[type="password"]:focus{border-color:var(--sig);box-shadow:0 0 0 3px var(--sig-dim)}
+.login-form input[type="password"]::placeholder{color:var(--text3)}
+.login-error{font-size:12px;color:var(--red);text-align:center;margin-top:8px;min-height:18px}
+.login-success{font-size:12px;color:var(--sig);text-align:center;margin-top:8px;min-height:18px}
+
+/* Setup Wizard */
+.wizard-overlay{position:fixed;inset:0;z-index:998;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;transition:opacity .5s,transform .5s}
+.wizard-overlay.hidden{opacity:0;pointer-events:none;transform:scale(1.05)}
+.wizard-card{width:100%;max-width:400px;text-align:center}
+.wizard-step{display:none}.wizard-step.active{display:block}
+.wizard-icon{font-size:64px;margin-bottom:16px}
+.wizard-title{font-family:'Orbitron',monospace;font-size:20px;font-weight:700;color:var(--sig);margin-bottom:12px;text-shadow:0 0 15px var(--sig-glow)}
+.wizard-desc{font-size:14px;color:var(--text2);line-height:1.7;margin-bottom:24px}
+.wizard-steps-indicator{display:flex;gap:8px;justify-content:center;margin-bottom:24px}
+.wizard-dot{width:8px;height:8px;border-radius:50%;background:var(--border);transition:background .3s}
+.wizard-dot.active{background:var(--sig)}
+.wizard-dot.done{background:var(--sig);opacity:.5}
+.wizard-input{width:100%;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'Inter',sans-serif;font-size:15px;outline:none;transition:border-color .2s;margin-bottom:12px;text-align:center}
+.wizard-input:focus{border-color:var(--sig);box-shadow:0 0 0 3px var(--sig-dim)}
+.wizard-input::placeholder{color:var(--text3)}
+.wizard-btn{width:100%;padding:14px;background:var(--sig);color:var(--bg);border:none;border-radius:var(--radius);font-family:'Orbitron',monospace;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;box-shadow:0 4px 24px var(--sig-glow);margin-bottom:10px}
+.wizard-btn:hover{transform:translateY(-2px);box-shadow:0 8px 32px var(--sig-glow)}
+.wizard-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.wizard-btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border);box-shadow:none}
+.wizard-btn-secondary:hover{box-shadow:none;border-color:var(--sig)}
+.wizard-status{font-size:12px;margin-top:10px;min-height:20px;line-height:1.5}
+.wizard-status.ok{color:var(--sig)}
+.wizard-status.err{color:var(--red)}
+.wizard-status.info{color:var(--text2)}
+.wizard-checklist{text-align:left;margin-bottom:20px}
+.wizard-check-item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;font-size:13px;color:var(--text2);line-height:1.5}
+.wizard-check-item .check-icon{flex-shrink:0;width:20px;height:20px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:12px;transition:all .3s}
+.wizard-check-item.done .check-icon{background:var(--sig);border-color:var(--sig);color:var(--bg)}
+.wizard-check-item.done{color:var(--text)}
+
 /* Scrollbar */
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -222,12 +263,85 @@ canvas#ringGauge{width:280px;height:280px}
 <!-- Login Screen -->
 <div class="login-screen" id="loginScreen">
   <div class="login-logo">GLUCOBRO</div>
-  <div class="login-sub">Dein Blutzucker. Dein Tracker.<br>Gib deine E-Mail ein und leg los.</div>
+  <div class="login-sub">Dein Blutzucker. Dein Tracker.<br>Erstelle ein Konto oder melde dich an.</div>
   <div class="login-form">
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tabSignup" onclick="switchAuthTab('signup')">Registrieren</button>
+      <button class="auth-tab" id="tabLogin" onclick="switchAuthTab('login')">Anmelden</button>
+    </div>
     <input type="email" id="loginEmail" placeholder="deine@email.de" autocomplete="email" inputmode="email">
-    <button class="login-btn" id="loginBtn" onclick="handleLogin()">Los geht's</button>
+    <input type="password" id="loginPassword" placeholder="Passwort (min. 6 Zeichen)" autocomplete="new-password">
+    <button class="login-btn" id="loginBtn" onclick="handleAuth()">Konto erstellen</button>
+    <div class="login-error" id="authError"></div>
+    <div class="login-success" id="authSuccess"></div>
   </div>
-  <div class="login-hint">Deine Daten werden automatisch in der Cloud gesichert.<br>Kein Passwort nötig — nur für dich.</div>
+  <div class="login-hint">Deine Daten werden verschlüsselt in der Cloud gesichert.</div>
+</div>
+
+<!-- Setup Wizard (after first signup) -->
+<div class="wizard-overlay hidden" id="wizardOverlay">
+  <div class="wizard-card">
+    <!-- Step 1: Welcome -->
+    <div class="wizard-step active" id="wizardStep1">
+      <div class="wizard-icon">🎉</div>
+      <div class="wizard-title">Willkommen bei GlucoBro!</div>
+      <div class="wizard-desc">Dein Konto ist bereit. Jetzt verbinden wir deinen FreeStyle Libre Sensor, damit GlucoBro deine Blutzuckerwerte automatisch trackt.</div>
+      <div class="wizard-steps-indicator">
+        <div class="wizard-dot active"></div>
+        <div class="wizard-dot"></div>
+        <div class="wizard-dot"></div>
+      </div>
+      <div class="wizard-checklist" id="wizardChecklist">
+        <div class="wizard-check-item done">
+          <div class="check-icon">✓</div>
+          <div>GlucoBro Konto erstellt</div>
+        </div>
+        <div class="wizard-check-item" id="checkLibre">
+          <div class="check-icon">2</div>
+          <div>LibreLinkUp verbinden</div>
+        </div>
+        <div class="wizard-check-item" id="checkLive">
+          <div class="check-icon">3</div>
+          <div>Live-Daten empfangen</div>
+        </div>
+      </div>
+      <button class="wizard-btn" onclick="wizardNext(2)">Libre verbinden</button>
+      <button class="wizard-btn wizard-btn-secondary" onclick="wizardSkip()">Später einrichten</button>
+    </div>
+
+    <!-- Step 2: LibreLinkUp Credentials -->
+    <div class="wizard-step" id="wizardStep2">
+      <div class="wizard-icon">📱</div>
+      <div class="wizard-title">LibreLinkUp verbinden</div>
+      <div class="wizard-desc">
+        Gib deine <strong>LibreLinkUp</strong> Login-Daten ein.<br>
+        <span style="font-size:12px;color:var(--text3)">Das ist die App, die du zum Teilen deiner Libre-Daten nutzt — nicht die FreeStyle Libre App selbst.</span>
+      </div>
+      <div class="wizard-steps-indicator">
+        <div class="wizard-dot done"></div>
+        <div class="wizard-dot active"></div>
+        <div class="wizard-dot"></div>
+      </div>
+      <input type="email" class="wizard-input" id="wizardCgmEmail" placeholder="LibreLinkUp E-Mail" autocomplete="email">
+      <input type="password" class="wizard-input" id="wizardCgmPassword" placeholder="LibreLinkUp Passwort" autocomplete="current-password">
+      <button class="wizard-btn" id="wizardConnectBtn" onclick="wizardConnect()">Verbinden</button>
+      <button class="wizard-btn wizard-btn-secondary" onclick="wizardNext(1)">Zurück</button>
+      <div class="wizard-status" id="wizardCgmStatus"></div>
+    </div>
+
+    <!-- Step 3: Success -->
+    <div class="wizard-step" id="wizardStep3">
+      <div class="wizard-icon">🎯</div>
+      <div class="wizard-title">Alles bereit!</div>
+      <div class="wizard-desc" id="wizardSuccessDesc">Dein Sensor ist verbunden. GlucoBro empfängt jetzt automatisch deine Blutzuckerwerte alle 5 Minuten.</div>
+      <div class="wizard-steps-indicator">
+        <div class="wizard-dot done"></div>
+        <div class="wizard-dot done"></div>
+        <div class="wizard-dot active"></div>
+      </div>
+      <button class="wizard-btn" onclick="wizardFinish()">Los geht's!</button>
+    </div>
+  </div>
 </div>
 
 <div class="app">
@@ -553,60 +667,135 @@ canvas#ringGauge{width:280px;height:280px}
 const STORAGE_KEY = 'glucobro_entries';
 const SETTINGS_KEY = 'glucobro_settings';
 const FACT_KEY = 'glucobro_last_fact';
+const SYNC_LAST_KEY = 'glucobro_last_sync';
+// Legacy keys (for migration)
 const SYNC_URL_KEY = 'glucobro_supa_url';
 const SYNC_KEY_KEY = 'glucobro_supa_key';
 const SYNC_ID_KEY = 'glucobro_sync_id';
-const SYNC_LAST_KEY = 'glucobro_last_sync';
 const USER_EMAIL_KEY = 'glucobro_user_email';
-const SUPA_DEFAULT_URL = 'https://hvcuspxmswhlzkatfxst.supabase.co';
-const SUPA_DEFAULT_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2Y3VzcHhtc3dobHprYXRmeHN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxODUwODMsImV4cCI6MjA4ODc2MTA4M30.MiV1Fdrz3dT-BLTxH_d0SPqiLtMxU-87Af6u_ql95NU';
 
-// === LOGIN / AUTH ===
-function getUserEmail() { return localStorage.getItem(USER_EMAIL_KEY); }
-function isLoggedIn() { return !!getUserEmail(); }
+// === SUPABASE AUTH CLIENT ===
+const SUPA_URL = 'https://hvcuspxmswhlzkatfxst.supabase.co';
+const SUPA_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imh2Y3VzcHhtc3dobHprYXRmeHN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxODUwODMsImV4cCI6MjA4ODc2MTA4M30.MiV1Fdrz3dT-BLTxH_d0SPqiLtMxU-87Af6u_ql95NU';
 
-async function sha256(str) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+const supa = window.supabase.createClient(SUPA_URL, SUPA_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false, storage: window.localStorage }
+});
+
+let currentUser = null;
+let authMode = 'signup'; // 'signup' or 'login'
+
+// === AUTH FUNCTIONS ===
+function isLoggedIn() { return !!currentUser; }
+function getUserEmail() { return currentUser?.email || null; }
+
+function switchAuthTab(mode) {
+  authMode = mode;
+  document.getElementById('tabSignup').classList.toggle('active', mode === 'signup');
+  document.getElementById('tabLogin').classList.toggle('active', mode === 'login');
+  document.getElementById('loginBtn').textContent = mode === 'signup' ? 'Konto erstellen' : 'Anmelden';
+  document.getElementById('loginPassword').placeholder = mode === 'signup' ? 'Passwort (min. 6 Zeichen)' : 'Passwort';
+  document.getElementById('loginPassword').autocomplete = mode === 'signup' ? 'new-password' : 'current-password';
+  document.getElementById('authError').textContent = '';
+  document.getElementById('authSuccess').textContent = '';
 }
 
-async function handleLogin() {
+async function handleAuth() {
   const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+  const password = document.getElementById('loginPassword').value;
+  const errorEl = document.getElementById('authError');
+  const successEl = document.getElementById('authSuccess');
+  errorEl.textContent = '';
+  successEl.textContent = '';
+
   if (!email || !email.includes('@')) {
+    errorEl.textContent = 'Bitte gültige E-Mail eingeben';
     document.getElementById('loginEmail').style.borderColor = 'var(--red)';
+    return;
+  }
+  if (password.length < 6) {
+    errorEl.textContent = 'Passwort muss mindestens 6 Zeichen haben';
     return;
   }
 
   const btn = document.getElementById('loginBtn');
   btn.disabled = true;
-  btn.textContent = 'Wird eingerichtet...';
+  btn.textContent = authMode === 'signup' ? 'Erstelle Konto...' : 'Anmelden...';
 
-  // Generate sync ID from email hash
-  const syncId = (await sha256(email)).slice(0, 16).toUpperCase();
+  try {
+    let result;
+    if (authMode === 'signup') {
+      result = await supa.auth.signUp({ email, password });
+      if (result.error) throw result.error;
+      // Check if email confirmation is required
+      if (result.data?.user?.identities?.length === 0) {
+        throw new Error('Diese E-Mail ist bereits registriert. Bitte anmelden.');
+      }
+      currentUser = result.data.user;
+      // Show wizard for new users
+      document.getElementById('loginScreen').classList.add('hidden');
+      document.getElementById('wizardOverlay').classList.remove('hidden');
+      updateUserDisplay();
+      setSyncStatus('syncing');
+      await syncPull();
+      updateDashboard();
+    } else {
+      result = await supa.auth.signInWithPassword({ email, password });
+      if (result.error) throw result.error;
+      currentUser = result.data.user;
+      onAuthSuccess();
+    }
+  } catch (err) {
+    let msg = err.message || 'Fehler bei der Anmeldung';
+    // Translate common Supabase errors
+    if (msg.includes('Invalid login credentials')) msg = 'Falsche E-Mail oder Passwort';
+    if (msg.includes('Email not confirmed')) msg = 'E-Mail noch nicht bestätigt. Prüfe dein Postfach.';
+    if (msg.includes('User already registered')) msg = 'Diese E-Mail ist bereits registriert. Bitte anmelden.';
+    if (msg.includes('already registered')) msg = 'Diese E-Mail ist bereits registriert. Bitte anmelden.';
+    errorEl.textContent = msg;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = authMode === 'signup' ? 'Konto erstellen' : 'Anmelden';
+  }
+}
 
-  // Store credentials
-  localStorage.setItem(USER_EMAIL_KEY, email);
-  localStorage.setItem(SYNC_URL_KEY, SUPA_DEFAULT_URL);
-  localStorage.setItem(SYNC_KEY_KEY, SUPA_DEFAULT_KEY);
-  localStorage.setItem(SYNC_ID_KEY, syncId);
+async function initAuth() {
+  const { data: { session } } = await supa.auth.getSession();
+  if (session) {
+    currentUser = session.user;
+    onAuthSuccess();
+  } else {
+    document.getElementById('loginScreen').classList.remove('hidden');
+    setTimeout(() => document.getElementById('loginEmail')?.focus(), 500);
+  }
 
-  // Enable cloud sync in settings
-  const s = getSettings();
-  s.cloudSync = true;
-  saveSettings(s);
+  supa.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+      currentUser = session?.user || null;
+    }
+    if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      location.reload();
+    }
+  });
+}
 
-  // Hide login, show app
+async function onAuthSuccess() {
   document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('wizardOverlay').classList.add('hidden');
   updateUserDisplay();
   setSyncStatus('syncing');
 
-  // Pull existing data from cloud
+  // Migrate legacy sync_id data if present
+  await migrateFromSyncId();
+
   await syncPull();
   updateDashboard();
-  showToast('Willkommen bei GlucoBro');
-
-  // Request push permission (important for iOS PWA)
+  showDailyFact();
+  scheduleNotifications();
   requestPushPermission();
+
+  if (getSettings().cgmEnabled && getCgmAuth()) startCgmPolling();
 }
 
 function updateUserDisplay() {
@@ -619,32 +808,176 @@ function updateUserDisplay() {
   }
 }
 
-function checkLoginState() {
-  if (isLoggedIn()) {
-    document.getElementById('loginScreen').classList.add('hidden');
-    updateUserDisplay();
-  } else {
-    document.getElementById('loginScreen').classList.remove('hidden');
-  }
-}
-
 async function requestPushPermission() {
   if (!('Notification' in window)) return;
   if (Notification.permission === 'granted') {
     subscribePush();
     return;
   }
-  // Delay slightly so the app feels loaded first
   setTimeout(async () => {
     const perm = await Notification.requestPermission();
     if (perm === 'granted') subscribePush();
   }, 2000);
 }
 
-function logout() {
+async function logout() {
   if (!confirm('Abmelden? Lokale Daten bleiben erhalten.')) return;
+  await supa.auth.signOut();
+}
+
+// === LEGACY MIGRATION: sync_id → auth.uid() ===
+async function migrateFromSyncId() {
+  const syncId = localStorage.getItem(SYNC_ID_KEY);
+  if (!syncId || !currentUser || localStorage.getItem('glucobro_migrated')) return;
+
+  try {
+    const res = await fetch(SUPA_URL + '/rest/v1/entries?sync_id=eq.' + syncId + '&order=id.desc', {
+      headers: { 'apikey': SUPA_ANON_KEY, 'Authorization': 'Bearer ' + SUPA_ANON_KEY, 'Accept': 'application/json' }
+    });
+    const oldEntries = await res.json();
+    if (!Array.isArray(oldEntries) || !oldEntries.length) {
+      cleanupLegacyKeys();
+      return;
+    }
+
+    const local = getEntries();
+    const allIds = new Set(oldEntries.map(e => e.id));
+    const merged = [...oldEntries];
+    for (const l of local) {
+      if (!allIds.has(l.id)) { merged.push(l); allIds.add(l.id); }
+    }
+
+    const localEntries = merged.map(e => ({
+      id: e.id, bz: e.bz || e.value, date: e.date, time: e.time,
+      meal: e.meal || '', meds: e.meds || '', sport: e.sport || '',
+      mood: e.mood || '', weight: e.weight || null
+    }));
+    localEntries.sort((a, b) => new Date(b.date + 'T' + b.time) - new Date(a.date + 'T' + a.time));
+    setEntries(localEntries);
+    cleanupLegacyKeys();
+    console.log('Migrated ' + localEntries.length + ' entries from sync_id');
+  } catch (err) {
+    console.warn('Migration error:', err);
+  }
+}
+
+function cleanupLegacyKeys() {
+  localStorage.removeItem(SYNC_ID_KEY);
+  localStorage.removeItem(SYNC_URL_KEY);
+  localStorage.removeItem(SYNC_KEY_KEY);
   localStorage.removeItem(USER_EMAIL_KEY);
-  location.reload();
+  localStorage.setItem('glucobro_migrated', 'true');
+}
+
+// === SETUP WIZARD ===
+function wizardNext(step) {
+  document.querySelectorAll('.wizard-step').forEach(s => s.classList.remove('active'));
+  document.getElementById('wizardStep' + step).classList.add('active');
+}
+
+async function wizardConnect() {
+  const email = document.getElementById('wizardCgmEmail').value.trim();
+  const pw = document.getElementById('wizardCgmPassword').value;
+  const statusEl = document.getElementById('wizardCgmStatus');
+  const btn = document.getElementById('wizardConnectBtn');
+
+  if (!email || !pw) {
+    statusEl.textContent = 'Bitte E-Mail und Passwort eingeben';
+    statusEl.className = 'wizard-status err';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Verbinde...';
+  statusEl.textContent = 'Verbinde mit LibreLinkUp...';
+  statusEl.className = 'wizard-status info';
+
+  try {
+    // Step 1: Login
+    const res = await fetch(LIBRE_API, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'login', email, password: pw })
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      statusEl.textContent = data.message || 'Login fehlgeschlagen';
+      statusEl.className = 'wizard-status err';
+      btn.disabled = false;
+      btn.textContent = 'Verbinden';
+      return;
+    }
+
+    statusEl.textContent = 'Login erfolgreich — suche Sensor...';
+
+    // Step 2: Get connections
+    const connRes = await fetch(LIBRE_API, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'connections', token: data.token, accountId: data.accountId, host: data.host })
+    });
+    const connData = await connRes.json();
+    const patients = connData.data || [];
+
+    if (!patients.length) {
+      statusEl.textContent = 'Kein Sensor gefunden. Bitte aktiviere zuerst Sharing in der LibreLinkUp App und lade einen Follower ein.';
+      statusEl.className = 'wizard-status err';
+      btn.disabled = false;
+      btn.textContent = 'Verbinden';
+      return;
+    }
+
+    const patientId = patients[0].patientId;
+    localStorage.setItem(CGM_AUTH_KEY, JSON.stringify({ token: data.token, accountId: data.accountId, host: data.host }));
+    localStorage.setItem(CGM_PATIENT_KEY, patientId);
+
+    // Enable CGM in settings
+    const s = getSettings();
+    s.cgmEnabled = true;
+    saveSettings(s);
+
+    // Save credentials for server-side cron
+    saveCgmCredentials(email, pw);
+
+    // Mark wizard checklist
+    document.getElementById('checkLibre').classList.add('done');
+    document.getElementById('checkLibre').querySelector('.check-icon').textContent = '✓';
+
+    // Try fetching first data
+    statusEl.textContent = 'Sensor gefunden — lade erste Daten...';
+    await cgmFetchNow();
+
+    document.getElementById('checkLive').classList.add('done');
+    document.getElementById('checkLive').querySelector('.check-icon').textContent = '✓';
+
+    // Go to success step
+    const patientName = patients[0].firstName || 'Sensor';
+    document.getElementById('wizardSuccessDesc').textContent =
+      'Verbunden mit ' + patientName + '. GlucoBro empfängt jetzt automatisch deine Blutzuckerwerte alle 5 Minuten.';
+    wizardNext(3);
+
+    startCgmPolling();
+    subscribePush();
+  } catch (err) {
+    statusEl.textContent = 'Verbindungsfehler: ' + err.message;
+    statusEl.className = 'wizard-status err';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Verbinden';
+  }
+}
+
+function wizardSkip() {
+  document.getElementById('wizardOverlay').classList.add('hidden');
+  onAuthSuccess();
+  showToast('Du kannst Libre jederzeit in den Einstellungen verbinden');
+}
+
+function wizardFinish() {
+  document.getElementById('wizardOverlay').classList.add('hidden');
+  showToast('Willkommen bei GlucoBro!');
+  showDailyFact();
+  scheduleNotifications();
+  requestPushPermission();
 }
 
 function getEntries() {
@@ -664,10 +997,8 @@ function getSettings() {
 }
 function saveSettings(s) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
 
-// === CLOUD SYNC (Supabase) ===
-function isSyncEnabled() {
-  return isLoggedIn() && localStorage.getItem(SYNC_URL_KEY) && localStorage.getItem(SYNC_KEY_KEY) && localStorage.getItem(SYNC_ID_KEY);
-}
+// === CLOUD SYNC (Supabase Auth) ===
+function isSyncEnabled() { return isLoggedIn(); }
 
 function setSyncStatus(status) {
   const dot = document.getElementById('syncDot');
@@ -679,7 +1010,7 @@ function renderSyncSettings() {
   const statusText = document.getElementById('syncStatusText');
   const descEl = document.getElementById('syncAccountDesc');
   const dotEl = document.getElementById('syncDotSettings');
-  if (isSyncEnabled()) {
+  if (isLoggedIn()) {
     descEl.textContent = 'Automatisch aktiv';
     dotEl.className = 'sync-dot synced';
     statusText.textContent = lastSync
@@ -693,102 +1024,77 @@ function renderSyncSettings() {
   updateUserDisplay();
 }
 
-async function supaFetch(method, path, body) {
-  const url = localStorage.getItem(SYNC_URL_KEY);
-  const key = localStorage.getItem(SYNC_KEY_KEY);
-  if (!url || !key) return null;
-
-  const headers = {
-    'apikey': key,
-    'Authorization': 'Bearer ' + key,
-    'Content-Type': 'application/json',
-    'Prefer': method === 'POST' ? 'resolution=merge-duplicates' : ''
-  };
-  if (method === 'GET') headers['Accept'] = 'application/json';
-
-  try {
-    const res = await fetch(url + '/rest/v1/' + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
-    if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
-    if (method === 'GET') return await res.json();
-    return true;
-  } catch (err) {
-    console.warn('Sync error:', err);
-    return null;
-  }
-}
-
 async function syncPush(entry) {
-  if (!isSyncEnabled()) return;
+  if (!isLoggedIn()) return;
   setSyncStatus('syncing');
-  const syncId = localStorage.getItem(SYNC_ID_KEY);
-  const payload = {
-    id: entry.id,
-    sync_id: syncId,
-    bz: entry.bz,
-    date: entry.date,
-    time: entry.time,
-    meal: entry.meal || '',
-    meds: entry.meds || '',
-    sport: entry.sport || '',
-    mood: entry.mood || '',
-    weight: entry.weight || null,
-    updated_at: new Date().toISOString()
-  };
-  const result = await supaFetch('POST', 'entries?on_conflict=id', payload);
-  setSyncStatus(result ? 'synced' : 'error');
-  if (result) localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+  try {
+    const { error } = await supa.from('entries').upsert({
+      id: entry.id,
+      sync_id: currentUser.id,
+      bz: entry.bz,
+      date: entry.date,
+      time: entry.time,
+      meal: entry.meal || '',
+      meds: entry.meds || '',
+      sport: entry.sport || '',
+      mood: entry.mood || '',
+      weight: entry.weight || null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'id' });
+    setSyncStatus(error ? 'error' : 'synced');
+    if (!error) localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+  } catch (err) { console.warn('Sync push error:', err); setSyncStatus('error'); }
 }
 
 async function syncDelete(id) {
-  if (!isSyncEnabled()) return;
+  if (!isLoggedIn()) return;
   setSyncStatus('syncing');
-  const syncId = localStorage.getItem(SYNC_ID_KEY);
-  const result = await supaFetch('DELETE', `entries?id=eq.${id}&sync_id=eq.${syncId}`);
-  setSyncStatus(result ? 'synced' : 'error');
-  if (result) localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+  try {
+    const { error } = await supa.from('entries').delete().eq('id', id).eq('sync_id', currentUser.id);
+    setSyncStatus(error ? 'error' : 'synced');
+    if (!error) localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+  } catch (err) { console.warn('Sync delete error:', err); setSyncStatus('error'); }
 }
 
 async function syncPull() {
-  if (!isSyncEnabled()) return;
+  if (!isLoggedIn()) return;
   setSyncStatus('syncing');
-  const syncId = localStorage.getItem(SYNC_ID_KEY);
-  const remote = await supaFetch('GET', `entries?sync_id=eq.${syncId}&order=id.desc`);
-  if (!remote) { setSyncStatus('error'); return; }
+  try {
+    const { data: remote, error } = await supa.from('entries')
+      .select('*').eq('sync_id', currentUser.id).order('id', { ascending: false });
+    if (error || !remote) { setSyncStatus('error'); return; }
 
-  const local = getEntries();
-  const localMap = new Map(local.map(e => [e.id, e]));
-  const remoteMap = new Map(remote.map(e => [e.id, e]));
-  let changed = false;
+    const local = getEntries();
+    const localMap = new Map(local.map(e => [e.id, e]));
+    const remoteMap = new Map(remote.map(e => [e.id, e]));
+    let changed = false;
 
-  // Remote entries not in local → add
-  for (const r of remote) {
-    if (!localMap.has(r.id)) {
-      local.push({ id: r.id, bz: r.bz, date: r.date, time: r.time, meal: r.meal, meds: r.meds, sport: r.sport, mood: r.mood, weight: r.weight });
-      changed = true;
+    for (const r of remote) {
+      if (!localMap.has(r.id)) {
+        local.push({ id: r.id, bz: r.bz, date: r.date, time: r.time, meal: r.meal, meds: r.meds, sport: r.sport, mood: r.mood, weight: r.weight });
+        changed = true;
+      }
     }
-  }
 
-  // Local entries not in remote → push up
-  const pushPromises = [];
-  for (const l of local) {
-    if (!remoteMap.has(l.id)) {
-      pushPromises.push(syncPush(l));
+    const pushPromises = [];
+    for (const l of local) {
+      if (!remoteMap.has(l.id)) pushPromises.push(syncPush(l));
     }
-  }
 
-  if (changed) {
-    local.sort((a,b) => new Date(b.date+'T'+b.time) - new Date(a.date+'T'+a.time));
-    setEntries(local);
-    updateDashboard();
-  }
+    if (changed) {
+      local.sort((a, b) => new Date(b.date + 'T' + b.time) - new Date(a.date + 'T' + a.time));
+      setEntries(local);
+      updateDashboard();
+    }
 
-  await Promise.all(pushPromises);
-  setSyncStatus('synced');
-  localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+    await Promise.all(pushPromises);
+    setSyncStatus('synced');
+    localStorage.setItem(SYNC_LAST_KEY, new Date().toISOString());
+  } catch (err) { console.warn('Sync pull error:', err); setSyncStatus('error'); }
 }
 
 async function manualSync() {
-  if (!isSyncEnabled()) {
+  if (!isLoggedIn()) {
     showToast('Bitte erst einloggen');
     return;
   }
@@ -979,17 +1285,13 @@ function stopCgmPolling() {
 
 // Save CGM credentials to Supabase (for cron-based push alerts)
 async function saveCgmCredentials(email, password) {
-  const syncId = localStorage.getItem(SYNC_ID_KEY);
-  if (!syncId) return;
-  const supaUrl = localStorage.getItem(SYNC_URL_KEY);
-  const supaKey = localStorage.getItem(SYNC_KEY_KEY);
-  if (!supaUrl || !supaKey) return;
+  if (!currentUser) return;
   try {
-    await fetch(supaUrl + '/rest/v1/cgm_credentials?on_conflict=sync_id', {
-      method: 'POST',
-      headers: { 'apikey': supaKey, 'Authorization': 'Bearer ' + supaKey, 'Content-Type': 'application/json', 'Prefer': 'resolution=merge-duplicates' },
-      body: JSON.stringify({ sync_id: syncId, email, password })
-    });
+    await supa.from('cgm_credentials').upsert({
+      sync_id: currentUser.id,
+      email,
+      password
+    }, { onConflict: 'sync_id' });
   } catch (err) { console.warn('Failed to save CGM creds:', err); }
 }
 
@@ -1033,13 +1335,12 @@ async function subscribePush() {
       });
     }
 
-    const syncId = localStorage.getItem(SYNC_ID_KEY);
-    if (!syncId) return;
+    if (!currentUser) return;
 
     await fetch('/api/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'subscribe', syncId, subscription: sub.toJSON() })
+      body: JSON.stringify({ action: 'subscribe', syncId: currentUser.id, subscription: sub.toJSON() })
     });
     showToast('Push-Alerts aktiviert');
   } catch (err) {
@@ -1120,9 +1421,10 @@ function drawParticles() {
       }
     }
   }
-  requestAnimationFrame(drawParticles);
+  if (!document.hidden) requestAnimationFrame(drawParticles);
 }
 drawParticles();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) requestAnimationFrame(drawParticles); });
 
 // === RING GAUGE ===
 const gCanvas = document.getElementById('ringGauge');
@@ -1705,6 +2007,8 @@ function clearAllData() {
   localStorage.removeItem(SYNC_ID_KEY);
   localStorage.removeItem(SYNC_LAST_KEY);
   localStorage.removeItem(USER_EMAIL_KEY);
+  localStorage.removeItem(CGM_AUTH_KEY);
+  localStorage.removeItem(CGM_PATIENT_KEY);
   setSyncStatus('off');
   location.reload();
 }
@@ -1778,8 +2082,8 @@ function updateDashboard() {
 
 // === KEYBOARD SHORTCUTS ===
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && document.activeElement?.id === 'loginEmail') {
-    handleLogin();
+  if (e.key === 'Enter' && (document.activeElement?.id === 'loginEmail' || document.activeElement?.id === 'loginPassword')) {
+    handleAuth();
     return;
   }
   if (e.key === 'Escape') {
@@ -1888,8 +2192,7 @@ if ('serviceWorker' in navigator) {
         if (this.state === 'activated') scheduleNotifications();
       });
     });
-    // Re-subscribe push on every launch (iOS silently drops subscriptions)
-    if (isLoggedIn()) subscribePush();
+    // Push re-subscribe handled by initAuth() → onAuthSuccess()
   }).catch(err => console.warn('SW registration failed:', err));
 }
 
@@ -1903,19 +2206,9 @@ setInterval(() => {
 }, 60000);
 
 // === INIT ===
-checkLoginState();
 updateDashboard();
-if (isLoggedIn()) {
-  showDailyFact();
-  scheduleNotifications();
-  setSyncStatus('syncing');
-  syncPull().then(() => setSyncStatus('synced')).catch(() => setSyncStatus('error'));
-  if (getSettings().cgmEnabled && getCgmAuth()) startCgmPolling();
-} else {
-  setSyncStatus('off');
-  // Focus email input after animation
-  setTimeout(() => document.getElementById('loginEmail')?.focus(), 500);
-}
+setSyncStatus('off');
+initAuth();
 </script>
 </body>
 </html>
